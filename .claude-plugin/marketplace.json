@@ -1,0 +1,166 @@
+{
+  "name": "offensive-claude",
+  "version": "1.0.0",
+  "description": "Offensive security toolkit for Claude Code - 25 skills covering red team, exploit dev, AD attacks, EDR bypass, mobile pentest.",
+  "author": "hypnguyen1209",
+  "repository": "https://github.com/hypnguyen1209/offensive-claude",
+  "skills": [
+    {
+      "name": "recon-osint",
+      "path": "skills/01-recon-osint.md",
+      "description": "Reconnaissance & OSINT"
+    },
+    {
+      "name": "vulnerability-analysis",
+      "path": "skills/02-vulnerability-analysis.md",
+      "description": "Source code security auditing"
+    },
+    {
+      "name": "exploit-development",
+      "path": "skills/03-exploit-development.md",
+      "description": "PoC & payload development"
+    },
+    {
+      "name": "reverse-engineering",
+      "path": "skills/04-reverse-engineering.md",
+      "description": "Binary & firmware analysis"
+    },
+    {
+      "name": "web-pentest",
+      "path": "skills/05-web-pentest.md",
+      "description": "Web application testing"
+    },
+    {
+      "name": "network-attack",
+      "path": "skills/06-network-attack.md",
+      "description": "Network & AD exploitation"
+    },
+    {
+      "name": "red-team-ops",
+      "path": "skills/07-red-team-ops.md",
+      "description": "Full red team operations"
+    },
+    {
+      "name": "cloud-security",
+      "path": "skills/08-cloud-security.md",
+      "description": "Cloud attack paths"
+    },
+    {
+      "name": "malware-analysis",
+      "path": "skills/09-malware-analysis.md",
+      "description": "Malware RE & detection"
+    },
+    {
+      "name": "ai-security",
+      "path": "skills/10-ai-security.md",
+      "description": "AI/ML security"
+    },
+    {
+      "name": "threat-hunting",
+      "path": "skills/11-threat-hunting.md",
+      "description": "Detection & hunting"
+    },
+    {
+      "name": "privesc-linux",
+      "path": "skills/12-privesc-linux.md",
+      "description": "Linux privilege escalation"
+    },
+    {
+      "name": "privesc-windows",
+      "path": "skills/13-privesc-windows.md",
+      "description": "Windows privilege escalation"
+    },
+    {
+      "name": "coding-mastery",
+      "path": "skills/14-coding-mastery.md",
+      "description": "Security tool development"
+    },
+    {
+      "name": "crypto-analysis",
+      "path": "skills/15-crypto-analysis.md",
+      "description": "Cryptographic assessment"
+    },
+    {
+      "name": "incident-response",
+      "path": "skills/16-incident-response.md",
+      "description": "IR & forensics"
+    },
+    {
+      "name": "edr-evasion",
+      "path": "skills/17-edr-evasion.md",
+      "description": "EDR/AV bypass"
+    },
+    {
+      "name": "initial-access",
+      "path": "skills/18-initial-access.md",
+      "description": "Phishing & payload delivery"
+    },
+    {
+      "name": "shellcode-dev",
+      "path": "skills/19-shellcode-dev.md",
+      "description": "Shellcode development"
+    },
+    {
+      "name": "windows-mitigations",
+      "path": "skills/20-windows-mitigations.md",
+      "description": "Exploit mitigation bypass"
+    },
+    {
+      "name": "windows-boundaries",
+      "path": "skills/21-windows-boundaries.md",
+      "description": "Security boundary attacks"
+    },
+    {
+      "name": "keylogger-arch",
+      "path": "skills/22-keylogger-arch.md",
+      "description": "Input capture architecture"
+    },
+    {
+      "name": "mobile-pentest",
+      "path": "skills/23-mobile-pentest.md",
+      "description": "Android/iOS offensive testing"
+    },
+    {
+      "name": "advanced-redteam",
+      "path": "skills/24-advanced-redteam.md",
+      "description": "Advanced OPSEC & C2 infra"
+    },
+    {
+      "name": "active-directory-attack",
+      "path": "skills/25-active-directory-attack.md",
+      "description": "AD exploitation & domain dominance"
+    }
+  ],
+  "agents": [
+    {
+      "name": "redteam-planner",
+      "path": "agents/redteam-planner.md",
+      "description": "Design attack paths and engagement strategies"
+    },
+    {
+      "name": "exploit-researcher",
+      "path": "agents/exploit-researcher.md",
+      "description": "CVE research and exploitation chain development"
+    },
+    {
+      "name": "security-reviewer",
+      "path": "agents/security-reviewer.md",
+      "description": "Deep code security audit"
+    },
+    {
+      "name": "reverse-engineer",
+      "path": "agents/reverse-engineer.md",
+      "description": "Binary analysis and vulnerability discovery"
+    },
+    {
+      "name": "ai-researcher",
+      "path": "agents/ai-researcher.md",
+      "description": "AI/ML architecture, training, and research"
+    },
+    {
+      "name": "network-analyst",
+      "path": "agents/network-analyst.md",
+      "description": "Protocol analysis and network defense"
+    }
+  ]
+}

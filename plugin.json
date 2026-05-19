@@ -1,7 +1,7 @@
 {
   "name": "offensive-claude",
   "version": "1.0.0",
-  "description": "Offensive security toolkit for Claude Code — 25 skills covering red team, exploit dev, AD attacks, EDR bypass, mobile pentest.",
+  "description": "Offensive security toolkit for Claude Code - 25 skills covering red team, exploit dev, AD attacks, EDR bypass, mobile pentest.",
   "author": "hypnguyen1209",
   "skills": [
     "skills/01-recon-osint.md",
