@@ -9,7 +9,12 @@
       "name": "offensive-claude",
       "version": "1.0.0",
       "description": "Offensive security toolkit for Claude Code - 25 skills covering red team, exploit dev, AD attacks, EDR bypass, mobile pentest.",
-      "repository": "https://github.com/hypnguyen1209/offensive-claude",
+      "source": {
+        "type": "github",
+        "owner": "hypnguyen1209",
+        "repo": "offensive-claude",
+        "branch": "main"
+      },
       "skills": [
         "skills/01-recon-osint.md",
         "skills/02-vulnerability-analysis.md",
