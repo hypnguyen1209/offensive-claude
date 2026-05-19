@@ -5,7 +5,18 @@ A comprehensive Claude Code configuration tailored for security researchers, red
 ## Quick Setup
 
 ```bash
-# Method 1: Plugin marketplace (recommended)
+# Method 1: One-liner install (recommended)
+curl -sL https://raw.githubusercontent.com/hypnguyen1209/offensive-claude/main/install.sh | bash
+```
+
+```bash
+# Method 2: Clone + install script
+git clone https://github.com/hypnguyen1209/offensive-claude.git ~/offensive-claude
+cd ~/offensive-claude && bash install.sh
+```
+
+```bash
+# Method 3: Plugin marketplace (requires Claude Code >= 2.2.0)
 git clone https://github.com/hypnguyen1209/offensive-claude.git ~/offensive-claude
 # Then in Claude Code:
 /plugin marketplace add ~/offensive-claude
@@ -13,12 +24,7 @@ git clone https://github.com/hypnguyen1209/offensive-claude.git ~/offensive-clau
 ```
 
 ```bash
-# Method 2: One-liner install (copies to ~/.claude/)
-curl -sL https://raw.githubusercontent.com/hypnguyen1209/offensive-claude/main/install.sh | bash
-```
-
-```bash
-# Method 3: Manual clone
+# Method 4: Manual copy
 git clone https://github.com/hypnguyen1209/offensive-claude.git ~/offensive-claude
 cp -r ~/offensive-claude/plugins/offensive-claude/skills ~/.claude/skills
 cp -r ~/offensive-claude/plugins/offensive-claude/agents ~/.claude/agents

@@ -1,0 +1,44 @@
+{
+  "name": "offensive-claude",
+  "version": "1.0.0",
+  "description": "Offensive security toolkit for Claude Code - 25 skills covering red team, exploit dev, AD attacks, EDR bypass, mobile pentest.",
+  "author": {
+    "name": "hypnguyen1209",
+    "url": "https://github.com/hypnguyen1209"
+  },
+  "skills": [
+    "skills/recon-osint/SKILL.md",
+    "skills/vulnerability-analysis/SKILL.md",
+    "skills/exploit-development/SKILL.md",
+    "skills/reverse-engineering/SKILL.md",
+    "skills/web-pentest/SKILL.md",
+    "skills/network-attack/SKILL.md",
+    "skills/red-team-ops/SKILL.md",
+    "skills/cloud-security/SKILL.md",
+    "skills/malware-analysis/SKILL.md",
+    "skills/ai-security/SKILL.md",
+    "skills/threat-hunting/SKILL.md",
+    "skills/privesc-linux/SKILL.md",
+    "skills/privesc-windows/SKILL.md",
+    "skills/coding-mastery/SKILL.md",
+    "skills/crypto-analysis/SKILL.md",
+    "skills/incident-response/SKILL.md",
+    "skills/edr-evasion/SKILL.md",
+    "skills/initial-access/SKILL.md",
+    "skills/shellcode-dev/SKILL.md",
+    "skills/windows-mitigations/SKILL.md",
+    "skills/windows-boundaries/SKILL.md",
+    "skills/keylogger-arch/SKILL.md",
+    "skills/mobile-pentest/SKILL.md",
+    "skills/advanced-redteam/SKILL.md",
+    "skills/active-directory-attack/SKILL.md"
+  ],
+  "agents": [
+    "agents/redteam-planner.md",
+    "agents/exploit-researcher.md",
+    "agents/security-reviewer.md",
+    "agents/reverse-engineer.md",
+    "agents/ai-researcher.md",
+    "agents/network-analyst.md"
+  ]
+}
