@@ -1,0 +1,56 @@
+{
+  "model": "glm-5.1",
+  "theme": "dark",
+  "skipDangerousModePermissionPrompt": true,
+  "alwaysThinkingEnabled": true,
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "sk-XXXX",
+    "ANTHROPIC_BASE_URL": "http://XXXX",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-5.1",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-5",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-4.7",
+    "ENABLE_TOOL_SEARCH": "1",
+    "DISABLE_NON_ESSENTIAL_MODEL_CALLS": "1",
+    "DISABLE_TELEMETRY": "1",
+    "CLAUDE_CODE_DISABLE_1M_CONTEXT": "1",
+    "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING": "1",
+    "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "1",
+    "CLAUDE_CODE_NO_FLICKER": "1",
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "Skill(*)",
+      "Agent(*)",
+      "WebFetch(*)",
+      "WebSearch(*)",
+      "TodoWrite(*)",
+      "mcp__ida-multi-mcp__*",
+      "mcp__jadx-mcp-server__*",
+      "mcp__mitm-search__*"
+    ],
+    "deny": [
+      "Bash(rm -rf /)",
+      "Bash(rm -rf /*)"
+    ],
+    "ask": []
+  },
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
+  "includeCoAuthoredBy": false,
+  "mcpServers": {
+    "mitm-search": {
+      "transport": "http",
+      "url": "https://mcp.mitm.vn/mcp"
+    }
+  }
+}
