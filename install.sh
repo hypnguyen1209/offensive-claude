@@ -18,7 +18,8 @@ for dir in "$TMPDIR"/skills/*/; do
   if [ "$skill_name" = "references" ]; then
     cp -r "$dir" "$DEST/skills/references"
   elif [ -f "$dir/SKILL.md" ]; then
-    cp "$dir/SKILL.md" "$DEST/skills/$skill_name.md"
+    mkdir -p "$DEST/skills/$skill_name"
+    cp "$dir/SKILL.md" "$DEST/skills/$skill_name/SKILL.md"
   fi
 done
 
