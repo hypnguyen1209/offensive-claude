@@ -5,6 +5,14 @@ metadata:
   type: offensive
   phase: exploitation
   tools: pacu, prowler, scoutsuite, trivy, kubectl, aws-cli, az-cli, gcloud, cloudfox, peirates
+kill_chain:
+  phase: [recon, exploit]
+  step: [1, 4]
+  attck_tactics: [TA0043, TA0002, TA0004]
+depends_on: [recon-osint]
+feeds_into: [exploit-development]
+inputs: [cloud_config, iam_policies]
+outputs: [cloud_misconfig_list, finding_record, attack_path]
 ---
 
 # Cloud Security & Attack

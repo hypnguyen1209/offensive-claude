@@ -4,6 +4,14 @@ description: Advanced red team operations — OPSEC discipline, C2 infrastructur
 metadata:
   type: offensive
   phase: operations
+kill_chain:
+  phase: [c2, actions]
+  step: [6, 7]
+  attck_tactics: [TA0011, TA0008, TA0010]
+depends_on: [edr-evasion, exploit-development, red-team-ops]
+feeds_into: [threat-hunting]
+inputs: [c2_framework, redirector_config]
+outputs: [c2_infrastructure, opsec_report, exfil_channel]
   ---
 
 # Advanced Red Team Operations

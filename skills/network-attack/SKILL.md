@@ -5,6 +5,14 @@ metadata:
   type: offensive
   phase: exploitation
   tools: nmap, responder, impacket, crackmapexec, bloodhound, mitm6, bettercap, chisel, ligolo-ng, kerbrute
+kill_chain:
+  phase: [recon, actions]
+  step: [1, 7]
+  attck_tactics: [TA0043, TA0008, TA0007]
+depends_on: [recon-osint]
+feeds_into: [active-directory-attack, privesc-linux, privesc-windows]
+inputs: [network_map, service_list]
+outputs: [lateral_movement_path, compromised_hosts]
 ---
 
 # Network Attack & Lateral Movement

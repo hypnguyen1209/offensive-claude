@@ -5,6 +5,14 @@ metadata:
   type: offensive
   phase: exploitation
   tools: keystone, nasm, msfvenom, donut, srdi, pwntools
+kill_chain:
+  phase: [weaponize]
+  step: [2]
+  attck_tactics: [TA0042]
+depends_on: [exploit-development, coding-mastery]
+feeds_into: [edr-evasion, initial-access]
+inputs: [target_architecture, payload_constraints]
+outputs: [shellcode, loader, injector]
 ---
 
 # Shellcode Development

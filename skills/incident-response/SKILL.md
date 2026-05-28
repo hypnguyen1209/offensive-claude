@@ -5,6 +5,14 @@ metadata:
   type: defensive
   phase: response
   tools: volatility3, autopsy, sleuthkit, plaso, chainsaw, hayabusa, velociraptor
+kill_chain:
+  phase: [report]
+  step: [8]
+  attck_tactics: []
+depends_on: [red-team-ops]
+feeds_into: [threat-hunting]
+inputs: [memory_dumps, disk_images, log_data]
+outputs: [timeline, ioc_list, forensic_report]
 ---
 
 # Incident Response

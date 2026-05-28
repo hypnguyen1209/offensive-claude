@@ -5,6 +5,14 @@ metadata:
   type: offensive
   phase: evasion
   tools: syscall-stubs, ntdll-unhooking, amsi-patch, etw-patch, process-hollowing
+kill_chain:
+  phase: [delivery, install]
+  step: [3, 5]
+  attck_tactics: [TA0005]
+depends_on: [exploit-development, shellcode-dev]
+feeds_into: [red-team-ops, initial-access]
+inputs: [edr_product, payload]
+outputs: [evasive_payload, bypass_technique]
 ---
 
 # EDR Evasion

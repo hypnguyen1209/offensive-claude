@@ -5,6 +5,14 @@ metadata:
   type: offensive
   phase: post-exploitation
   tools: cobalt-strike, sliver, havoc, mythic, covenant, msfconsole, powershell-empire
+kill_chain:
+  phase: [install, actions]
+  step: [5, 7]
+  attck_tactics: [TA0003, TA0005, TA0009, TA0010]
+depends_on: [exploit-development, edr-evasion]
+feeds_into: [threat-hunting, incident-response]
+inputs: [foothold_access, c2_channel]
+outputs: [persistence_mechanism, collected_data, exfiltrated_data]
 ---
 
 # Red Team Operations

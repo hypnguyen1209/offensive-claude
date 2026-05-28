@@ -4,6 +4,14 @@ description: AI/ML security assessment — prompt injection, jailbreak detection
 metadata:
   type: offensive
   phase: analysis
+kill_chain:
+  phase: [recon, exploit]
+  step: [1, 4]
+  attck_tactics: [TA0043, TA0002]
+depends_on: [recon-osint]
+feeds_into: [exploit-development]
+inputs: [ai_model_endpoint, rag_pipeline]
+outputs: [finding_record, adversarial_payload]
 ---
 
 # AI/ML Security

@@ -4,6 +4,14 @@ description: Windows security boundary attacks — kernel/user boundary, sandbox
 metadata:
   type: offensive
   phase: exploitation
+kill_chain:
+  phase: [exploit, install]
+  step: [4, 5]
+  attck_tactics: [TA0002, TA0004]
+depends_on: [privesc-windows, exploit-development]
+feeds_into: [red-team-ops]
+inputs: [sandbox_config, kernel_info]
+outputs: [boundary_escape, elevated_access]
   ---
 
 # Windows Security Boundaries

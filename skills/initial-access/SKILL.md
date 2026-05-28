@@ -5,6 +5,14 @@ metadata:
   type: offensive
   phase: initial-access
   mitre: TA0001
+kill_chain:
+  phase: [delivery]
+  step: [3]
+  attck_tactics: [TA0001]
+depends_on: [recon-osint, exploit-development, edr-evasion]
+feeds_into: [red-team-ops]
+inputs: [target_profile, payload, evasion_technique]
+outputs: [initial_foothold, delivery_report]
 ---
 
 # Initial Access

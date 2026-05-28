@@ -6,6 +6,14 @@ metadata:
   phase: exploitation
   tools: impacket, mimikatz, bloodhound, rubeus, crackmapexec, powerview, responder, kerbrute
   mitre: TA0008
+kill_chain:
+  phase: [exploit, actions]
+  step: [4, 7]
+  attck_tactics: [TA0006, TA0008, TA0004]
+depends_on: [network-attack, privesc-windows]
+feeds_into: [red-team-ops, advanced-redteam]
+inputs: [domain_info, user_context]
+outputs: [domain_admin_access, finding_record, credential_dump]
 ---
 
 # Active Directory Attacks

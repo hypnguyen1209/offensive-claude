@@ -5,6 +5,14 @@ metadata:
   type: defensive
   phase: detection
   tools: splunk, elasticsearch, sigma, yara, osquery, velociraptor, sysmon
+kill_chain:
+  phase: [report]
+  step: [8]
+  attck_tactics: [TA0043]
+depends_on: [red-team-ops, incident-response]
+feeds_into: []
+inputs: [finding_records, log_data, ioc_list]
+outputs: [sigma_rules, attck_navigator_export, detection_report]
 ---
 
 # Threat Hunting & Detection

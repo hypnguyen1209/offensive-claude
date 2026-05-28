@@ -5,6 +5,14 @@ metadata:
   type: offensive
   phase: analysis
   tools: openssl, testssl, hashcat, john, hashid, rsactftool
+kill_chain:
+  phase: [recon, exploit]
+  step: [1, 4]
+  attck_tactics: [TA0043, TA0006]
+depends_on: [recon-osint]
+feeds_into: [exploit-development]
+inputs: [tls_config, crypto_implementation, hash_samples]
+outputs: [crypto_weakness_report, finding_record]
 ---
 
 # Cryptographic Analysis

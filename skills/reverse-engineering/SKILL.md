@@ -5,6 +5,14 @@ metadata:
   type: offensive
   phase: analysis
   tools: ida, ghidra, radare2, binary-ninja, gdb, frida, x64dbg, angr, z3, capstone, unicorn
+kill_chain:
+  phase: [weaponize, exploit]
+  step: [2, 4]
+  attck_tactics: [TA0042, TA0002]
+depends_on: [recon-osint]
+feeds_into: [exploit-development, malware-analysis]
+inputs: [binary_samples, firmware_images]
+outputs: [disassembly_report, vulnerability_details, protocol_specs]
 ---
 
 # Reverse Engineering

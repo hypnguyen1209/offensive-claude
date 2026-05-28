@@ -5,6 +5,14 @@ metadata:
   type: offensive
   phase: post-exploitation
   tools: linpeas, pspy, gtfobins, linux-exploit-suggester
+kill_chain:
+  phase: [exploit, actions]
+  step: [4, 7]
+  attck_tactics: [TA0004]
+depends_on: [network-attack, exploit-development]
+feeds_into: [red-team-ops, advanced-redteam]
+inputs: [shell_access, os_fingerprint]
+outputs: [elevated_access, finding_record]
 ---
 
 # Linux Privilege Escalation

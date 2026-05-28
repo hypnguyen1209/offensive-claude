@@ -4,6 +4,14 @@ description: Windows exploit mitigation bypass — ASLR, DEP/NX, CFG/XFG, CET/Sh
 metadata:
   type: offensive
   phase: exploitation
+kill_chain:
+  phase: [exploit]
+  step: [4]
+  attck_tactics: [TA0002, TA0005]
+depends_on: [exploit-development, reverse-engineering]
+feeds_into: [shellcode-dev, edr-evasion]
+inputs: [mitigation_config, binary_analysis]
+outputs: [bypass_technique, finding_record]
   ---
 
 # Windows Mitigations & Bypass

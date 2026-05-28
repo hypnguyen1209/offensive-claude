@@ -5,6 +5,14 @@ metadata:
   type: offensive
   phase: reconnaissance
   tools: nmap, amass, subfinder, theHarvester, h8mail, searchsploit, shodan, censys, nuclei, waybackurls, httpx, katana
+kill_chain:
+  phase: [recon]
+  step: [1]
+  attck_tactics: [TA0043]
+depends_on: []
+feeds_into: [vulnerability-analysis, web-pentest, network-attack, exploit-development, cloud-security, mobile-pentest]
+inputs: [scope_definition, target_list]
+outputs: [attack_surface_map, subdomain_list, technology_fingerprint, cve_list]
 ---
 
 # Reconnaissance & OSINT

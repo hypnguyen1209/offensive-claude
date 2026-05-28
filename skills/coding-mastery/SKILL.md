@@ -4,6 +4,14 @@ description: Advanced software engineering — systems programming, exploit deve
 metadata:
   type: utility
   phase: any
+kill_chain:
+  phase: [weaponize]
+  step: [2]
+  attck_tactics: [TA0042]
+depends_on: []
+feeds_into: [exploit-development, shellcode-dev, edr-evasion]
+inputs: [tool_requirements]
+outputs: [custom_tooling, exploit_code]
 ---
 
 # Coding Mastery
