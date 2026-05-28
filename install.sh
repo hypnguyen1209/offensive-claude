@@ -1,5 +1,5 @@
 #!/bin/bash
-# Install offensive-claude skills and agents into ~/.claude/
+# Install offensive-claude skills, agents, templates, workflows, commands, and presets into ~/.claude/
 set -e
 
 DEST="${CLAUDE_HOME:-$HOME/.claude}"
@@ -12,7 +12,7 @@ TMPDIR=$(mktemp -d)
 git clone --depth 1 "$REPO" "$TMPDIR" 2>/dev/null
 
 # Copy skills
-mkdir -p "$DEST/skills" "$DEST/agents"
+mkdir -p "$DEST/skills" "$DEST/agents" "$DEST/templates" "$DEST/workflows" "$DEST/commands" "$DEST/presets"
 for dir in "$TMPDIR"/skills/*/; do
   skill_name=$(basename "$dir")
   if [ "$skill_name" = "references" ]; then
@@ -26,6 +26,18 @@ done
 # Copy agents
 cp "$TMPDIR"/agents/*.md "$DEST/agents/"
 
+# Copy templates
+cp -r "$TMPDIR"/templates/* "$DEST/templates/"
+
+# Copy workflows
+cp -r "$TMPDIR"/workflows/* "$DEST/workflows/"
+
+# Copy commands
+cp -r "$TMPDIR"/commands/* "$DEST/commands/"
+
+# Copy presets
+cp -r "$TMPDIR"/presets/* "$DEST/presets/"
+
 # Copy CLAUDE.md if not exists
 if [ ! -f "$DEST/CLAUDE.md" ]; then
   cp "$TMPDIR/CLAUDE.md" "$DEST/CLAUDE.md"
@@ -37,8 +49,12 @@ fi
 rm -rf "$TMPDIR"
 
 echo "[+] Done! Installed:"
-echo "    - 25 skills"
-echo "    - 6 agents"
+echo "    - 25 skills with Kill Chain metadata"
+echo "    - 6 collaborative agents"
 echo "    - 47 vulnerability references"
+echo "    - 18 engagement templates (9 phases)"
+echo "    - 7 workflow definitions"
+echo "    - 12 orchestration commands (/engage.*)"
+echo "    - 7 engagement presets"
 echo ""
-echo "    Skills are active globally for all projects."
+echo "    Run '/engage.init web-app' to start your first engagement."

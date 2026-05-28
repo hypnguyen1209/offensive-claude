@@ -67,18 +67,109 @@ Agents are loaded from `./agents/` directory:
 | ai-researcher | AI/ML architecture, training, and research |
 | network-analyst | Protocol analysis and network defense |
 
-## Workflow
+## Engagement Workflow — Cyber Kill Chain
 
-1. **Identify the task domain** — match to appropriate skill(s)
-2. **Load relevant skill** — follow methodology defined in skill file
-3. **Execute systematically** — follow the skill's protocol step by step
-4. **Validate findings** — confirm exploitability before reporting
-5. **Document** — CWE, CVSS, MITRE ATT&CK mapping, remediation
+This project follows a **Spec-Driven Development** methodology adapted for offensive security. Engagements are structured as a 9-phase pipeline based on the Lockheed Martin Cyber Kill Chain.
+
+### Pipeline
+
+```
+Phase 0    Phase 1    Phase 2      Phase 3     Phase 4       Phase 5       Phase 6    Phase 7       Phase 8
+SCOPE  →  RECON  →  WEAPONIZE →  DELIVERY →  EXPLOIT  →  INSTALLATION →   C2    →  ACTIONS ON →  REPORT
+                                                                                    OBJECTIVES
+```
+
+### Orchestration Commands
+
+| Command | Phase | Action |
+|---------|-------|--------|
+| `/engage.init <workflow>` | — | Initialize engagement with workflow preset |
+| `/engage.scope` | 0 | Define targets, ROE, authorization |
+| `/engage.recon` | 1 | Passive/active reconnaissance |
+| `/engage.weaponize` | 2 | Payload development, exploit design |
+| `/engage.deliver` | 3 | Delivery vector execution |
+| `/engage.exploit` | 4 | Exploitation, finding documentation |
+| `/engage.install` | 5 | Persistence establishment |
+| `/engage.c2` | 6 | C2 infrastructure setup |
+| `/engage.actions` | 7 | Objectives execution, lateral movement |
+| `/engage.report` | 8 | Report generation |
+| `/engage.status` | — | Show pipeline status |
+| `/engage.gate` | — | Validate current phase gate |
+
+### Quality Gates
+
+Each phase transition requires gate validation:
+1. Required artifacts exist (templates filled)
+2. Findings have mandatory fields (CWE, CVSS, evidence, ATT&CK ID)
+3. Gate PASS → proceed to next phase
+4. Gate FAIL → list missing items, suggest skill to fill gap
+
+### Workflow Types
+
+| Preset | Phases | Use Case |
+|--------|--------|----------|
+| `web-app` | 0,1,2,3,4,8 | Web application pentest |
+| `network` | 0,1,2,4,5,6,7,8 | Internal network pentest |
+| `red-team` | ALL (0-8) | Full adversary simulation |
+| `cloud` | 0,1,4,8 | Cloud security audit |
+| `mobile` | 0,1,2,4,8 | Mobile application pentest |
+| `ad-domain` | 0,1,2,4,5,7,8 | Active Directory assessment |
+| `bug-bounty` | 0,1,4,8 | Bug bounty hunting |
+
+### Standalone Skill Usage
+
+Skills can also be invoked standalone (without an engagement workflow) for quick tasks — the workflow is optional, not mandatory.
+
+## Skills Available
+
+Skills are loaded from `./skills/` directory:
+
+| # | Skill | Domain | Kill Chain Phase |
+|---|-------|--------|-----------------|
+| 01 | recon-osint | Reconnaissance & OSINT | 1 (Recon) |
+| 02 | vulnerability-analysis | Source Code Auditing | 1,4 (Recon, Exploit) |
+| 03 | exploit-development | PoC & Payload Development | 2,4 (Weaponize, Exploit) |
+| 04 | reverse-engineering | Binary & Firmware Analysis | 2,4 (Weaponize, Exploit) |
+| 05 | web-pentest | Web Application Testing | 3,4 (Delivery, Exploit) |
+| 06 | network-attack | Network & AD Exploitation | 1,7 (Recon, Actions) |
+| 07 | red-team-ops | Full Red Team Operations | 5,7 (Install, Actions) |
+| 08 | cloud-security | Cloud Attack Paths | 1,4 (Recon, Exploit) |
+| 09 | malware-analysis | Malware RE & Detection | 2 (Weaponize) |
+| 10 | ai-security | AI/ML Security | 1,4 (Recon, Exploit) |
+| 11 | threat-hunting | Detection & Hunting | 8 (Report) |
+| 12 | privesc-linux | Linux Privilege Escalation | 4,7 (Exploit, Actions) |
+| 13 | privesc-windows | Windows Privilege Escalation | 4,7 (Exploit, Actions) |
+| 14 | coding-mastery | Security Tool Development | 2 (Weaponize) |
+| 15 | crypto-analysis | Cryptographic Assessment | 1,4 (Recon, Exploit) |
+| 16 | incident-response | IR & Forensics | 8 (Report) |
+| 17 | edr-evasion | EDR/AV Bypass & Hook Unhooking | 3,5 (Delivery, Install) |
+| 18 | initial-access | Phishing, Payload Delivery | 3 (Delivery) |
+| 19 | shellcode-dev | Shellcode Development & Loaders | 2 (Weaponize) |
+| 20 | windows-mitigations | Exploit Mitigation Bypass | 4 (Exploit) |
+| 21 | windows-boundaries | Security Boundary Attacks | 4,5 (Exploit, Install) |
+| 22 | keylogger-arch | Input Capture Architecture | 5,7 (Install, Actions) |
+| 23 | mobile-pentest | Android/iOS Offensive Testing | 1,4 (Recon, Exploit) |
+| 24 | advanced-redteam | Advanced OPSEC, C2 Infra | 6,7 (C2, Actions) |
+| 25 | active-directory-attack | AD Exploitation, Kerberos | 4,7 (Exploit, Actions) |
+
+## Agents Available
+
+Agents are loaded from `./agents/` directory:
+
+| Agent | Layer | Phases | Purpose |
+|-------|-------|--------|---------|
+| redteam-planner | Planning | 0,1,2,7 | Design attack paths, OPSEC strategies |
+| exploit-researcher | Execution | 1,2,4 | CVE research, exploit chain development |
+| security-reviewer | Analysis | 1,4,8 | Finding validation, gate checks |
+| reverse-engineer | Execution | 2,4,5 | Binary analysis, vulnerability discovery |
+| ai-researcher | Execution | 1,2,4 | AI/ML security assessment |
+| network-analyst | Analysis | 1,3,6,7 | Protocol analysis, C2 review |
 
 ## Output Standards
 
-- Findings include: severity, CWE, exploitation path, PoC, remediation
+- Findings include: severity, CWE, CVSS, exploitation path, PoC, evidence, ATT&CK mapping, remediation
 - Code is complete, tested, and production-quality
 - Commands include exact syntax with all required flags
 - Network operations specify protocols, ports, and expected responses
 - Always note OPSEC considerations for offensive operations
+- Finding records use structured templates from `templates/exploit/findings/`
