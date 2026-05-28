@@ -1,0 +1,27 @@
+id: cloud
+name: Cloud Security Assessment
+description: AWS/Azure/GCP security audit and attack path analysis
+phases:
+  skip: [weaponize, delivery, install, c2, actions]
+  required: [scope, recon, exploit, report]
+skills:
+  primary: [cloud-security, recon-osint, exploit-development]
+  secondary: [vulnerability-analysis, crypto-analysis, coding-mastery, network-attack]
+  exclude: [shellcode-dev, edr-evasion, initial-access, privesc-linux, privesc-windows, keylogger-arch, windows-boundaries, windows-mitigations, advanced-redteam, active-directory-attack, mobile-pentest]
+agents:
+  required: [redteam-planner, exploit-researcher, security-reviewer]
+  optional: [ai-researcher, network-analyst]
+gate_overrides:
+  recon:
+    min_findings: 1
+    required: [cloud_resources_enumerated, iam_policies_reviewed, storage_buckets_checked]
+  exploit:
+    each_finding: [cwe_id, cvss_score, evidence, attck_id, remediation, cloud_service]
+report_format:
+  include_cloud_architecture: true
+  include_iam_analysis: true
+  include_compliance: [cis-benchmark, nist-csf, iso27001]
+  cloud_specific:
+    attack_paths: true
+    privilege_escalation_chains: true
+    data_exposure_risks: true

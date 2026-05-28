@@ -1,0 +1,228 @@
+id: red-team-engagement
+name: Full Red Team Engagement
+kill_chain: classic
+description: Complete adversary simulation with all kill chain phases including persistence, C2, and objective execution
+phases:
+  scope:
+    skills: [recon-osint, red-team-ops]
+    agents: [redteam-planner]
+    templates:
+      - scope/scope-definition.md
+      - scope/emergency-contact.md
+    gate:
+      required: [targets_defined, authorization_confirmed, roe_signed]
+      validation: |
+        - Written authorization with explicit red team scope
+        - Crown jewels / objectives defined
+        - Deconfliction process established
+        - Emergency stop procedure documented
+        - OPSEC level defined (covert/overt)
+    next: recon
+
+  recon:
+    skills: [recon-osint, web-pentest, network-attack, cloud-security, active-directory-attack]
+    agents: [redteam-planner, network-analyst, exploit-researcher]
+    templates:
+      - recon/recon-plan.md
+      - recon/attack-surface.md
+    tools:
+      - subfinder
+      - httpx
+      - nmap
+      - nuclei
+      - katana
+      - amass
+      - bloodhound
+      - ldapsearch
+      - kerbrute
+      - theHarvester
+    gate:
+      required: [attack_surface_mapped, initial_vectors_identified, ad_enumerated]
+      min_findings: 1
+      validation: |
+        - External attack surface fully mapped
+        - Internal network topology understood
+        - AD structure enumerated (if applicable)
+        - Employee/credential data gathered
+        - Initial access vectors prioritized
+    next: weaponize
+
+  weaponize:
+    skills:
+      - exploit-development
+      - shellcode-dev
+      - coding-mastery
+      - edr-evasion
+      - initial-access
+      - advanced-redteam
+    agents: [exploit-researcher, reverse-engineer]
+    templates:
+      - weaponize/exploit-blueprint.md
+      - weaponize/payload-config.md
+    tools:
+      - msfvenom
+      - donut
+      - scarecrow
+      - nim
+      - sliver
+      - cobalt-strike
+    gate:
+      required: [payload_developed, evasion_tested, delivery_method_chosen]
+      validation: |
+        - Custom payload developed
+        - EDR/AV evasion validated
+        - Payload tested in lab environment
+        - Multiple delivery options prepared
+        - Fallback payloads ready
+    next: delivery
+
+  delivery:
+    skills: [initial-access, web-pentest, advanced-redteam]
+    agents: [redteam-planner, network-analyst]
+    templates:
+      - delivery/delivery-plan.md
+      - delivery/social-engineering.md
+    tools:
+      - gophish
+      - evilginx
+      - modlishka
+      - o365spray
+    gate:
+      required: [delivery_executed, initial_access_achieved]
+      validation: |
+        - Delivery method executed
+        - Initial access confirmed
+        - Foothold established
+        - OPSEC maintained
+    next: exploit
+
+  exploit:
+    skills:
+      - exploit-development
+      - web-pentest
+      - network-attack
+      - privesc-linux
+      - privesc-windows
+      - windows-mitigations
+      - windows-boundaries
+      - active-directory-attack
+      - cloud-security
+      - ai-security
+      - crypto-analysis
+    agents:
+      - exploit-researcher
+      - reverse-engineer
+      - security-reviewer
+      - ai-researcher
+      - network-analyst
+    templates:
+      - exploit/exploit-plan.md
+      - exploit/findings/finding-record.md
+    tools:
+      - mimikatz
+      - rubeus
+      - certify
+      - sharphound
+      - seatbelt
+      - winpeas
+      - linpeas
+    gate:
+      required: [at_least_one_finding, privilege_escalation_attempted]
+      min_findings: 1
+      each_finding: [cwe_id, cvss_score, evidence, attck_id, poc, impact]
+      validation: |
+        - Vulnerabilities exploited
+        - Privilege escalation attempted
+        - Findings documented with full evidence
+    next: install
+
+  install:
+    skills: [advanced-redteam, edr-evasion, privesc-windows, privesc-linux]
+    agents: [exploit-researcher, reverse-engineer]
+    templates:
+      - install/persistence-mechanism.md
+      - install/cleanup-plan.md
+    tools:
+      - sliver
+      - cobalt-strike
+      - scheduled-tasks
+      - registry
+      - cron
+    gate:
+      required: [persistence_established, cleanup_plan_documented]
+      validation: |
+        - At least one persistence mechanism deployed
+        - Persistence survives reboot
+        - Cleanup procedure documented
+        - Detection risk assessed
+    next: c2
+
+  c2:
+    skills: [advanced-redteam, edr-evasion, network-attack, coding-mastery]
+    agents: [redteam-planner, network-analyst]
+    templates:
+      - c2/c2-infrastructure.md
+      - c2/opsec-checklist.md
+    tools:
+      - sliver
+      - cobalt-strike
+      - mythic
+      - havoc
+      - redirectors
+      - domain-fronting
+    gate:
+      required: [c2_channel_established, opsec_validated]
+      validation: |
+        - C2 channel operational
+        - Redundant channels configured
+        - OPSEC checklist completed
+        - Traffic blends with normal patterns
+        - Kill switch documented
+    next: actions
+
+  actions:
+    skills:
+      - red-team-ops
+      - advanced-redteam
+      - network-attack
+      - active-directory-attack
+      - cloud-security
+      - privesc-windows
+      - privesc-linux
+    agents: [redteam-planner, exploit-researcher, network-analyst]
+    templates:
+      - actions/objectives.md
+      - actions/collection-plan.md
+    tools:
+      - bloodhound
+      - mimikatz
+      - rubeus
+      - impacket
+      - crackmapexec
+      - evil-winrm
+    gate:
+      required: [objectives_attempted, lateral_movement_documented]
+      validation: |
+        - Crown jewels accessed or access path demonstrated
+        - Lateral movement documented
+        - Data collection simulated
+        - Impact demonstrated
+        - Full attack path documented
+    next: report
+
+  report:
+    skills: [incident-response, threat-hunting, red-team-ops]
+    agents: [security-reviewer, redteam-planner]
+    templates:
+      - report/technical-report.md
+      - report/executive-summary.md
+      - report/finding-record.md
+    gate:
+      required: [all_findings_documented, report_generated, cleanup_verified]
+      validation: |
+        - Complete attack narrative documented
+        - All findings with MITRE ATT&CK mapping
+        - Detection gaps identified
+        - Remediation priorities established
+        - All persistence removed and verified
+        - Evidence package complete

@@ -1,0 +1,25 @@
+id: web-app
+name: Web Application Pentest
+description: OWASP-focused web application assessment
+phases:
+  skip: [install, c2, actions]
+  required: [scope, recon, weaponize, delivery, exploit, report]
+skills:
+  primary: [recon-osint, web-pentest, exploit-development]
+  secondary: [vulnerability-analysis, coding-mastery, crypto-analysis, cloud-security, ai-security]
+  exclude: [shellcode-dev, edr-evasion, active-directory-attack, privesc-linux, privesc-windows, keylogger-arch, windows-boundaries, windows-mitigations, advanced-redteam]
+agents:
+  required: [redteam-planner, exploit-researcher, security-reviewer]
+  optional: [ai-researcher, network-analyst]
+templates:
+  override:
+    exploit/findings/finding-record.md: presets/web-app/templates/owasp-finding.md
+gate_overrides:
+  recon:
+    min_findings: 1
+    required: [subdomains_enumerated, tech_fingerprinted, dirs_fuzzed]
+  exploit:
+    each_finding: [cwe_id, cvss_score, evidence, attck_id, remediation]
+report_format:
+  include_owasp_mapping: true
+  include_compliance: [owasp-top10, pci-dss]

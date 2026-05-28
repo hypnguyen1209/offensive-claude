@@ -1,0 +1,197 @@
+id: ad-domain-assessment
+name: Active Directory Domain Assessment
+kill_chain: classic
+description: Comprehensive Active Directory security assessment including Kerberos attacks, NTLM relay, privilege escalation, and domain dominance
+phases:
+  scope:
+    skills: [recon-osint, active-directory-attack]
+    agents: [redteam-planner]
+    templates:
+      - scope/scope-definition.md
+      - scope/emergency-contact.md
+    gate:
+      required: [targets_defined, authorization_confirmed, roe_signed]
+      validation: |
+        - Domain name(s) documented
+        - Domain controller IPs/hostnames identified
+        - Initial access method defined (credentials, network position, etc.)
+        - Critical systems exclusions documented (DCs, critical servers)
+        - Testing window and restrictions agreed
+    next: recon
+
+  recon:
+    skills: [recon-osint, active-directory-attack, network-attack]
+    agents: [redteam-planner, network-analyst]
+    templates:
+      - recon/recon-plan.md
+      - recon/attack-surface.md
+    tools:
+      - bloodhound
+      - sharphound
+      - ldapsearch
+      - ldapdomaindump
+      - enum4linux-ng
+      - kerbrute
+      - crackmapexec
+      - nmap
+      - responder
+      - adidnsdump
+      - powerview
+    gate:
+      required: [ad_enumerated, users_groups_mapped, attack_paths_identified]
+      min_findings: 1
+      validation: |
+        - Domain users and groups enumerated
+        - Computer accounts enumerated
+        - Service accounts identified
+        - Domain trusts mapped
+        - GPO configuration reviewed
+        - BloodHound data collected and analyzed
+        - Kerberos SPN enumeration complete
+        - LDAP anonymous bind tested
+        - SMB signing status assessed
+    next: weaponize
+
+  weaponize:
+    skills:
+      - active-directory-attack
+      - exploit-development
+      - coding-mastery
+      - edr-evasion
+      - network-attack
+    agents: [exploit-researcher, reverse-engineer]
+    templates:
+      - weaponize/exploit-blueprint.md
+      - weaponize/payload-config.md
+    tools:
+      - impacket
+      - rubeus
+      - mimikatz
+      - crackmapexec
+      - responder
+      - ntlmrelayx
+    gate:
+      required: [attack_vector_selected, tools_prepared]
+      validation: |
+        - Attack vector selected based on BloodHound paths
+        - Kerberoasting targets identified
+        - AS-REP roasting targets identified
+        - NTLM relay opportunities identified
+        - Credential dumping strategy defined
+        - Tools prepared and tested
+    next: exploit
+
+  exploit:
+    skills:
+      - active-directory-attack
+      - network-attack
+      - privesc-windows
+      - exploit-development
+      - windows-mitigations
+      - crypto-analysis
+    agents:
+      - exploit-researcher
+      - network-analyst
+      - security-reviewer
+    templates:
+      - exploit/exploit-plan.md
+      - exploit/findings/finding-record.md
+    tools:
+      - bloodhound
+      - mimikatz
+      - rubeus
+      - certify
+      - impacket
+      - crackmapexec
+      - responder
+      - ntlmrelayx
+      - mitm6
+      - powerview
+      - sharphound
+      - whisker
+      - certipy
+    gate:
+      required: [at_least_one_finding, privilege_escalation_path_proven]
+      min_findings: 1
+      each_finding: [cwe_id, cvss_score, evidence, attck_id, poc, impact]
+      validation: |
+        - Kerberoasting executed and hashes cracked
+        - AS-REP roasting executed
+        - NTLM relay attacks tested
+        - Unconstrained delegation exploited
+        - Constrained delegation exploited
+        - Resource-based constrained delegation tested
+        - Certificate template vulnerabilities tested (ESC1-ESC8)
+        - GPO abuse tested
+        - ACL abuse paths exploited
+        - Each finding fully documented
+    next: install
+
+  install:
+    skills: [active-directory-attack, advanced-redteam, edr-evasion, privesc-windows]
+    agents: [exploit-researcher]
+    templates:
+      - install/persistence-mechanism.md
+      - install/cleanup-plan.md
+    tools:
+      - mimikatz
+      - rubeus
+      - impacket
+      - powerview
+    gate:
+      required: [persistence_established, cleanup_plan_documented]
+      validation: |
+        - AD persistence mechanism deployed (Golden Ticket, Silver Ticket, etc.)
+        - Backup domain admin access established
+        - Cleanup procedure documented for every change
+        - Detection risk assessed
+    next: actions
+
+  actions:
+    skills:
+      - active-directory-attack
+      - network-attack
+      - privesc-windows
+      - red-team-ops
+    agents: [redteam-planner, network-analyst, exploit-researcher]
+    templates:
+      - actions/objectives.md
+      - actions/collection-plan.md
+    tools:
+      - bloodhound
+      - mimikatz
+      - rubeus
+      - impacket
+      - crackmapexec
+      - evil-winrm
+      - psexec
+      - wmiexec
+      - dcsync
+    gate:
+      required: [objectives_attempted, domain_compromise_proven]
+      validation: |
+        - Domain Admin privileges achieved
+        - DCSync executed (NTDS.dit dumped)
+        - Lateral movement to critical systems demonstrated
+        - Full domain compromise path documented
+        - Sensitive data access demonstrated
+    next: report
+
+  report:
+    skills: [incident-response, threat-hunting, active-directory-attack]
+    agents: [security-reviewer, network-analyst]
+    templates:
+      - report/technical-report.md
+      - report/executive-summary.md
+      - report/finding-record.md
+    gate:
+      required: [all_findings_documented, report_generated, cleanup_verified]
+      validation: |
+        - All findings documented with AD-specific context
+        - Attack path graph from BloodHound included
+        - Tier model violations documented
+        - Kerberos delegation issues explained
+        - Certificate Services vulnerabilities detailed
+        - GPO hardening recommendations provided
+        - All persistence removed and verified
+        - Credential cleanup confirmed

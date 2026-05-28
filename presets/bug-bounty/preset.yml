@@ -1,0 +1,28 @@
+id: bug-bounty
+name: Bug Bounty Assessment
+description: Lightweight vulnerability discovery for bug bounty programs
+phases:
+  skip: [weaponize, delivery, install, c2, actions]
+  required: [scope, recon, exploit, report]
+skills:
+  primary: [recon-osint, web-pentest, exploit-development, vulnerability-analysis]
+  secondary: [coding-mastery, crypto-analysis, cloud-security, ai-security, mobile-pentest]
+  exclude: [shellcode-dev, edr-evasion, active-directory-attack, privesc-linux, privesc-windows, keylogger-arch, windows-boundaries, windows-mitigations, advanced-redteam, initial-access, network-attack, red-team-ops]
+agents:
+  required: [exploit-researcher, security-reviewer]
+  optional: [redteam-planner, ai-researcher]
+gate_overrides:
+  recon:
+    min_findings: 1
+    required: [scope_verified, assets_enumerated, tech_stack_identified]
+  exploit:
+    each_finding: [cwe_id, cvss_score, evidence, remediation, poc_included, bounty_severity]
+report_format:
+  include_owasp_mapping: true
+  bug_bounty_specific:
+    severity_justification: true
+    reproduction_steps: true
+    impact_analysis: true
+    remediation_guidance: true
+  output_format: markdown
+  template: bug-bounty-submission

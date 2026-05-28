@@ -1,0 +1,26 @@
+id: network
+name: Network Penetration Test
+description: Internal network and infrastructure assessment
+phases:
+  skip: [delivery]
+  required: [scope, recon, weaponize, exploit, install, c2, actions, report]
+skills:
+  primary: [recon-osint, network-attack, privesc-linux, privesc-windows, exploit-development]
+  secondary: [active-directory-attack, crypto-analysis, vulnerability-analysis, edr-evasion]
+  exclude: [web-pentest, initial-access, mobile-pentest, ai-security, keylogger-arch]
+agents:
+  required: [redteam-planner, exploit-researcher, network-analyst]
+  optional: [reverse-engineer, security-reviewer]
+gate_overrides:
+  recon:
+    min_findings: 1
+    required: [network_mapped, services_enumerated, hosts_discovered]
+  exploit:
+    each_finding: [cwe_id, cvss_score, evidence, attck_id, remediation]
+  install:
+    required: [persistence_established, backdoor_tested]
+  actions:
+    required: [lateral_movement_documented, privilege_escalation_confirmed]
+report_format:
+  include_network_diagram: true
+  include_compliance: [nist-csf, iso27001]

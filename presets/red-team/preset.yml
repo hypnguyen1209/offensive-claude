@@ -1,0 +1,40 @@
+id: red-team
+name: Full Red Team Engagement
+description: Complete adversary simulation with all kill chain phases
+phases:
+  skip: []
+  required: [scope, recon, weaponize, delivery, exploit, install, c2, actions, report]
+skills:
+  primary: [recon-osint, initial-access, exploit-development, edr-evasion, shellcode-dev, advanced-redteam, red-team-ops]
+  secondary: [active-directory-attack, privesc-linux, privesc-windows, network-attack, windows-mitigations, windows-boundaries, crypto-analysis, coding-mastery, malware-analysis]
+  exclude: []
+agents:
+  required: [redteam-planner, exploit-researcher, reverse-engineer, security-reviewer, network-analyst]
+  optional: [ai-researcher]
+gate_overrides:
+  recon:
+    min_findings: 3
+    required: [osint_complete, attack_surface_mapped, targets_prioritized]
+  weaponize:
+    required: [payload_developed, evasion_tested, obfuscation_applied]
+  delivery:
+    required: [delivery_method_selected, pretext_prepared, opsec_reviewed]
+  exploit:
+    each_finding: [cwe_id, cvss_score, evidence, attck_id, remediation, detection_notes]
+  install:
+    required: [persistence_established, multiple_backdoors, redundancy_confirmed]
+  c2:
+    required: [c2_established, opsec_review_passed, redirectors_configured]
+  actions:
+    required: [objectives_documented, collection_plan, exfil_method]
+  report:
+    required: [all_findings, timeline, attck_navigator_export, cleanup_confirmed, opsec_review]
+opsec:
+  mandatory_review: true
+  detection_logging: true
+  cleanup_enforcement: true
+report_format:
+  include_attck_navigator: true
+  include_timeline: true
+  include_opsec_notes: true
+  include_compliance: [nist-csf, mitre-attack]

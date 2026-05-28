@@ -1,0 +1,29 @@
+id: mobile
+name: Mobile Application Pentest
+description: Android/iOS application security assessment
+phases:
+  skip: [install, c2, actions]
+  required: [scope, recon, weaponize, exploit, report]
+skills:
+  primary: [mobile-pentest, reverse-engineering, exploit-development]
+  secondary: [vulnerability-analysis, crypto-analysis, coding-mastery, web-pentest, ai-security]
+  exclude: [shellcode-dev, edr-evasion, active-directory-attack, privesc-linux, privesc-windows, keylogger-arch, windows-boundaries, windows-mitigations, advanced-redteam, initial-access, network-attack]
+agents:
+  required: [redteam-planner, exploit-researcher, reverse-engineer, security-reviewer]
+  optional: [ai-researcher]
+gate_overrides:
+  recon:
+    min_findings: 1
+    required: [app_decompiled, manifest_analyzed, api_endpoints_mapped, permissions_reviewed]
+  weaponize:
+    required: [repackaging_tested, hooking_framework_ready]
+  exploit:
+    each_finding: [cwe_id, cvss_score, evidence, attck_id, remediation, owasp_mobile_category]
+report_format:
+  include_owasp_mobile_mapping: true
+  include_compliance: [owasp-masvs, owasp-mobile-top10]
+  mobile_specific:
+    static_analysis: true
+    dynamic_analysis: true
+    network_traffic: true
+    data_storage: true

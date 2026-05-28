@@ -1,0 +1,34 @@
+id: ad-domain
+name: Active Directory Assessment
+description: Active Directory and Windows domain exploitation
+phases:
+  skip: [delivery, c2]
+  required: [scope, recon, weaponize, exploit, install, actions, report]
+skills:
+  primary: [active-directory-attack, network-attack, privesc-windows]
+  secondary: [recon-osint, exploit-development, edr-evasion, crypto-analysis, vulnerability-analysis]
+  exclude: [web-pentest, mobile-pentest, ai-security, keylogger-arch, shellcode-dev, initial-access, cloud-security, privesc-linux]
+agents:
+  required: [redteam-planner, exploit-researcher, network-analyst]
+  optional: [reverse-engineer, security-reviewer]
+gate_overrides:
+  recon:
+    min_findings: 1
+    required: [domain_enumerated, users_discovered, groups_mapped, trusts_identified]
+  weaponize:
+    required: [kerberos_attacks_ready, relay_tools_configured]
+  exploit:
+    each_finding: [cwe_id, cvss_score, evidence, attck_id, remediation, ad_impact]
+  install:
+    required: [persistence_established, golden_ticket_capability]
+  actions:
+    required: [lateral_movement_documented, domain_admin_achieved, dcsync_tested]
+report_format:
+  include_ad_diagram: true
+  include_attack_paths: true
+  include_compliance: [nist-csf, cis-benchmark]
+  ad_specific:
+    kerberos_attacks: true
+    delegation_issues: true
+    trust_relationships: true
+    privilege_escalation_paths: true

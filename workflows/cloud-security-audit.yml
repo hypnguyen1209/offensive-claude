@@ -1,0 +1,106 @@
+id: cloud-security-audit
+name: Cloud Security Audit
+kill_chain: classic
+description: Cloud infrastructure security assessment covering AWS, Azure, and GCP misconfigurations, IAM weaknesses, and attack paths
+phases:
+  scope:
+    skills: [recon-osint, cloud-security]
+    agents: [redteam-planner]
+    templates:
+      - scope/scope-definition.md
+      - scope/emergency-contact.md
+    gate:
+      required: [targets_defined, authorization_confirmed, roe_signed]
+      validation: |
+        - Cloud provider(s) identified (AWS/Azure/GCP)
+        - Account IDs / subscription IDs / project IDs documented
+        - Access credentials or roles provisioned
+        - Scope boundaries defined (which accounts, regions, services)
+        - Production vs non-production delineated
+    next: recon
+
+  recon:
+    skills: [recon-osint, cloud-security]
+    agents: [redteam-planner, network-analyst]
+    templates:
+      - recon/recon-plan.md
+      - recon/attack-surface.md
+    tools:
+      - aws-cli
+      - az-cli
+      - gcloud
+      - prowler
+      - scoutsuite
+      - cloudfox
+      - pacu
+      - enumerate-iam
+      - s3scanner
+      - cloudsplaining
+    gate:
+      required: [cloud_assets_enumerated, iam_reviewed, public_exposure_mapped]
+      min_findings: 1
+      validation: |
+        - All cloud assets enumerated (compute, storage, network, IAM)
+        - IAM policies and roles reviewed
+        - Public-facing resources identified
+        - Network configuration mapped (VPCs, security groups, NACLs)
+        - Storage bucket permissions audited
+        - Secrets and credential storage reviewed
+        - Logging and monitoring configuration assessed
+    next: exploit
+
+  exploit:
+    skills:
+      - cloud-security
+      - exploit-development
+      - privesc-linux
+      - privesc-windows
+      - network-attack
+      - crypto-analysis
+    agents:
+      - exploit-researcher
+      - security-reviewer
+      - network-analyst
+    templates:
+      - exploit/exploit-plan.md
+      - exploit/findings/finding-record.md
+    tools:
+      - pacu
+      - cloudfox
+      - pmapper
+      - endgame
+      - aws-cli
+      - az-cli
+      - gcloud
+      - kubectl
+      - trivy
+    gate:
+      required: [at_least_one_finding]
+      min_findings: 1
+      each_finding: [cwe_id, cvss_score, evidence, attck_id, poc, impact]
+      validation: |
+        - IAM privilege escalation paths tested
+        - Cross-account access tested
+        - Metadata service exploitation attempted (SSRF → IMDS)
+        - Container escape paths tested (if applicable)
+        - Kubernetes misconfigurations exploited (if applicable)
+        - Data exposure validated
+        - Each finding documented with cloud-specific context
+    next: report
+
+  report:
+    skills: [incident-response, threat-hunting, cloud-security]
+    agents: [security-reviewer]
+    templates:
+      - report/technical-report.md
+      - report/executive-summary.md
+      - report/finding-record.md
+    gate:
+      required: [all_findings_documented, report_generated]
+      validation: |
+        - All findings documented with cloud service context
+        - IAM remediation recommendations specific and actionable
+        - Infrastructure-as-code fixes provided where applicable
+        - Compliance mapping (CIS Benchmarks, SOC2, etc.)
+        - Architecture recommendations for defense in depth
+        - Cost impact of remediation estimated

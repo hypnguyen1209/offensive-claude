@@ -1,0 +1,119 @@
+id: bug-bounty
+name: Bug Bounty Hunting
+kill_chain: classic
+description: Lightweight bug bounty workflow focused on rapid vulnerability discovery and responsible disclosure
+phases:
+  scope:
+    skills: [recon-osint, web-pentest]
+    agents: [redteam-planner]
+    templates:
+      - scope/scope-definition.md
+      - scope/emergency-contact.md
+    gate:
+      required: [targets_defined, authorization_confirmed, roe_signed]
+      validation: |
+        - Bug bounty program identified (HackerOne, Bugcrowd, etc.)
+        - Program scope documented from policy
+        - Out-of-scope items clearly noted
+        - Severity/payout tiers understood
+        - Disclosure timeline requirements noted
+        - Duplicate check process defined
+    next: recon
+
+  recon:
+    skills: [recon-osint, web-pentest]
+    agents: [redteam-planner, network-analyst, exploit-researcher]
+    templates:
+      - recon/recon-plan.md
+      - recon/attack-surface.md
+    tools:
+      - subfinder
+      - amass
+      - httpx
+      - nuclei
+      - katana
+      - ffuf
+      - waybackurls
+      - gau
+      - github-dorking
+      - shodan
+      - censys
+      - nmap
+      - whatweb
+      - wappalyzer
+    gate:
+      required: [subdomains_enumerated, endpoints_discovered, tech_fingerprinted]
+      min_findings: 1
+      validation: |
+        - All subdomains enumerated
+        - Live hosts identified
+        - Web technologies fingerprinted
+        - JavaScript files analyzed for endpoints
+        - Wayback machine URLs collected
+        - GitHub/code repositories searched
+        - API endpoints discovered
+        - Parameters identified for testing
+        - Initial vulnerability scan complete
+    next: exploit
+
+  exploit:
+    skills:
+      - web-pentest
+      - exploit-development
+      - crypto-analysis
+      - ai-security
+      - cloud-security
+    agents:
+      - exploit-researcher
+      - security-reviewer
+      - ai-researcher
+    templates:
+      - exploit/exploit-plan.md
+      - exploit/findings/finding-record.md
+    tools:
+      - burpsuite
+      - nuclei
+      - ffuf
+      - sqlmap
+      - xsstrike
+      - dalfox
+      - jwt_tool
+      - arjun
+      - paramspider
+      - gf
+      - nosqlmap
+      - commix
+    gate:
+      required: [at_least_one_finding]
+      min_findings: 1
+      each_finding: [cwe_id, cvss_score, evidence, attck_id, poc, impact]
+      validation: |
+        - Vulnerability validated and confirmed
+        - Not a duplicate (checked against program submissions)
+        - Proof of concept demonstrates real impact
+        - Evidence captured (screenshots, requests/responses)
+        - Business impact clearly articulated
+        - Remediation guidance provided
+        - Meets program's minimum severity threshold
+    next: report
+
+  report:
+    skills: [incident-response, web-pentest]
+    agents: [security-reviewer]
+    templates:
+      - report/technical-report.md
+      - report/executive-summary.md
+      - report/finding-record.md
+    gate:
+      required: [all_findings_documented, report_generated]
+      validation: |
+        - Report follows program's submission template
+        - Clear title and summary
+        - Step-by-step reproduction steps
+        - Impact clearly explained
+        - CVSS score calculated
+        - CWE/OWASP mapping included
+        - Remediation recommendations provided
+        - All evidence attached
+        - Professional and respectful tone
+        - No sensitive data exposed in report
