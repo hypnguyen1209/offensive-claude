@@ -1,0 +1,91 @@
+// =============================================================================
+// entra_hunt.kql - Entra ID / M365 / Defender cloud-identity hunting pack
+//
+// USAGE: paste each query into Microsoft Sentinel Logs or Advanced Hunting
+//        (Microsoft 365 Defender). Tune the lookback (ago(Nd)) and tenant
+//        baselines (allowed ASNs, sanctioned device-code apps) before alerting.
+//
+// Tables: SigninLogs, AuditLogs, MicrosoftGraphActivityLogs, IdentityLogonEvents,
+//         DeviceProcessEvents, DeviceFileEvents (M365D / Sentinel).
+//
+// ATT&CK: T1528 (Steal App Access Token), T1566 (Phishing),
+//         T1550.001 (App Access Token), T1078.004 (Cloud Accounts),
+//         T1098 (Account Manipulation), T1114 (Email Collection).
+//
+// Defensive hunting pack. Authorized use only.
+// =============================================================================
+
+// -- 1) Device-code phishing: device-code sign-ins from newly-seen source -----
+// STORM-2372 / Tycoon2FA / EvilTokens pattern. AppIds: Auth Broker / OfficeHome.
+let watchApps = dynamic([
+    "29d9ed98-a469-4536-ade2-f981bc1d605e",   // Microsoft Authentication Broker
+    "4765445b-32c6-49b0-83e6-1d93765276ca"]); // OfficeHome (credential-relay variant)
+SigninLogs
+| where TimeGenerated > ago(14d)
+| where AuthenticationProtocol == "deviceCode" and ResultType == 0
+| extend asn = tostring(AutonomousSystemNumber), city = tostring(LocationDetails.city)
+| summarize firstSeen = min(TimeGenerated), asns = make_set(asn),
+            ips = make_set(IPAddress), cities = make_set(city)
+        by UserPrincipalName, AppDisplayName, AppId
+| where firstSeen > ago(7d)                   // device-code newly appearing for this user/app
+| extend watched = AppId in (watchApps)
+| order by watched desc, firstSeen desc;
+
+// -- 2) Post-token Graph enumeration within 1h of a device-code sign-in -------
+let dc = SigninLogs
+    | where TimeGenerated > ago(7d)
+    | where AuthenticationProtocol == "deviceCode" and ResultType == 0
+    | project UserPrincipalName, IPAddress, t0 = TimeGenerated;
+MicrosoftGraphActivityLogs
+| where TimeGenerated > ago(7d)
+| where RequestUri has_any ("/messages", "/mailFolders", "/drive", "/contacts", "/users", "/me/")
+| join kind=inner dc on $left.UserId == $right.UserPrincipalName
+| where TimeGenerated between (t0 .. (t0 + 1h))
+| summarize calls = count(), uris = make_set(RequestUri, 25) by UserPrincipalName, IPAddress
+| where calls > 50;                            // mass harvesting of mailbox/files/contacts
+
+// -- 3) Illicit OAuth consent / risky app credential added --------------------
+AuditLogs
+| where TimeGenerated > ago(14d)
+| where OperationName in ("Consent to application",
+                          "Add app role assignment grant to user",
+                          "Add service principal credentials",
+                          "Update application - Certificates and secrets management")
+| mv-expand tr = TargetResources
+| extend mods = tostring(tr.modifiedProperties)
+| where mods has_any ("Mail.Read","Mail.ReadWrite","Files.ReadWrite.All",
+                      "Directory.Read.All","User.Read.All","full_access_as_app","offline_access")
+| project TimeGenerated, OperationName, InitiatedBy = tostring(InitiatedBy.user.userPrincipalName),
+          AppId = tostring(tr.id), mods;
+
+// -- 4) PRT (Primary Refresh Token) replay from multiple geos same day --------
+SigninLogs
+| where TimeGenerated > ago(7d)
+| where AuthenticationProtocol == "primaryRefreshToken"
+| summarize geos = make_set(tostring(LocationDetails.countryOrRegion)),
+            ips = make_set(IPAddress), devices = make_set(tostring(DeviceDetail.deviceId))
+        by UserPrincipalName, bin(TimeGenerated, 1d)
+| where array_length(geos) > 1;                // PRT used from >1 country in a day
+
+// -- 5) Malicious inbox rule created shortly after sign-in (exfil/persistence) -
+OfficeActivity
+| where TimeGenerated > ago(14d)
+| where Operation in ("New-InboxRule", "Set-InboxRule", "UpdateInboxRules")
+| extend params = tostring(Parameters)
+| where params has_any ("ForwardTo", "RedirectTo", "DeleteMessage",
+                        "MoveToFolder", "RSS Feeds", "Archive")
+| project TimeGenerated, UserId, Operation, OriginatingServer, params;
+
+// -- 6) New device registered to tenant (token-survives-revocation persistence)-
+AuditLogs
+| where TimeGenerated > ago(14d)
+| where OperationName in ("Add registered device", "Register device", "Add device")
+| extend dev = tostring(TargetResources[0].displayName)
+| project TimeGenerated, InitiatedBy = tostring(InitiatedBy.user.userPrincipalName),
+          dev, Result;
+
+// -- 7) Defender: LSASS / cloudAP access feeding PRT theft (endpoint join) -----
+DeviceProcessEvents
+| where Timestamp > ago(7d)
+| where FileName in~ ("dsregcmd.exe","mimikatz.exe") or ProcessCommandLine has "cloudap"
+| project Timestamp, DeviceName, AccountName, FileName, ProcessCommandLine;

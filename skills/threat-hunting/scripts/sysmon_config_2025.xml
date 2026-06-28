@@ -1,0 +1,147 @@
+<!--
+  sysmon_config_2025.xml - Threat-hunting Sysmon configuration (Sysmon 15+).
+
+  USAGE (run elevated):
+    sysmon -accepteula -i sysmon_config_2025.xml      # install
+    sysmon -c sysmon_config_2025.xml                  # update running config
+    sysmon -c                                          # dump current config
+
+  Notes:
+    * Requires Sysmon 15+ (process runs as PPL self-protection). Schema 4.90.
+    * Lineage: SwiftOnSecurity sysmon-config + Olaf Hartong sysmon-modular ideas,
+      trimmed for HUNTING (EID 25 ProcessTampering, LSASS access w/ call trace,
+      ETW/AMSI-relevant image loads, C2 pipe + DNS). Tune excludes to your fleet.
+    * Microsoft is moving EID 7/25 into native OS ETW; this remains the broadest
+      free baseline today.
+
+  Defensive telemetry configuration. Authorized use only.
+-->
+<Sysmon schemaversion="4.90">
+  <HashAlgorithms>SHA256,IMPHASH</HashAlgorithms>
+  <DnsLookup>False</DnsLookup>          <!-- avoid reverse-DNS noise / leakage -->
+  <ArchiveDirectory>Sysmon</ArchiveDirectory>
+
+  <EventFiltering>
+
+    <!-- EID 1: Process creation. Capture all; exclude only chatty signed noise. -->
+    <RuleGroup name="proc_create" groupRelation="or">
+      <ProcessCreate onmatch="exclude">
+        <Image condition="is">C:\Windows\System32\SearchProtocolHost.exe</Image>
+        <Image condition="is">C:\Windows\System32\wermgr.exe</Image>
+        <CommandLine condition="contains">CCleaner</CommandLine>
+      </ProcessCreate>
+    </RuleGroup>
+
+    <!-- EID 3: Network connection. Focus on LOLBins + non-browser to internet. -->
+    <RuleGroup name="net_connect" groupRelation="or">
+      <NetworkConnect onmatch="include">
+        <Image condition="end with">powershell.exe</Image>
+        <Image condition="end with">pwsh.exe</Image>
+        <Image condition="end with">cmd.exe</Image>
+        <Image condition="end with">certutil.exe</Image>
+        <Image condition="end with">mshta.exe</Image>
+        <Image condition="end with">regsvr32.exe</Image>
+        <Image condition="end with">rundll32.exe</Image>
+        <Image condition="end with">bitsadmin.exe</Image>
+        <Image condition="end with">curl.exe</Image>
+        <Image condition="end with">wscript.exe</Image>
+        <Image condition="end with">cscript.exe</Image>
+        <DestinationPort condition="is">4444</DestinationPort>
+        <DestinationPort condition="is">1080</DestinationPort>
+      </NetworkConnect>
+    </RuleGroup>
+
+    <!-- EID 7: Image load. Catch unsigned/odd DLLs and amsi/ntdll touches. -->
+    <RuleGroup name="image_load" groupRelation="or">
+      <ImageLoad onmatch="include">
+        <ImageLoaded condition="end with">amsi.dll</ImageLoaded>
+        <ImageLoaded condition="end with">clr.dll</ImageLoaded>
+        <ImageLoaded condition="end with">clrjit.dll</ImageLoaded>
+        <ImageLoaded condition="end with">vaultcli.dll</ImageLoaded>
+        <ImageLoaded condition="end with">wininet.dll</ImageLoaded>
+        <Signed condition="is">false</Signed>
+      </ImageLoad>
+    </RuleGroup>
+
+    <!-- EID 8: CreateRemoteThread (classic injection). -->
+    <RuleGroup name="remote_thread" groupRelation="or">
+      <CreateRemoteThread onmatch="include">
+        <TargetImage condition="end with">lsass.exe</TargetImage>
+        <SourceImage condition="contains">\Temp\</SourceImage>
+        <StartModule condition="is"></StartModule>
+      </CreateRemoteThread>
+    </RuleGroup>
+
+    <!-- EID 10: ProcessAccess. LSASS handle requests with call trace (cred dump). -->
+    <RuleGroup name="proc_access" groupRelation="or">
+      <ProcessAccess onmatch="include">
+        <TargetImage condition="end with">lsass.exe</TargetImage>
+      </ProcessAccess>
+    </RuleGroup>
+    <RuleGroup name="proc_access_excl" groupRelation="or">
+      <ProcessAccess onmatch="exclude">
+        <SourceImage condition="begin with">C:\Windows\System32\</SourceImage>
+        <SourceImage condition="begin with">C:\Program Files\Windows Defender\</SourceImage>
+        <SourceImage condition="begin with">C:\Program Files\Microsoft Defender</SourceImage>
+        <GrantedAccess condition="is">0x1000</GrantedAccess>
+      </ProcessAccess>
+    </RuleGroup>
+
+    <!-- EID 11: File create. Droppers, dumps, staging. -->
+    <RuleGroup name="file_create" groupRelation="or">
+      <FileCreate onmatch="include">
+        <TargetFilename condition="end with">.dmp</TargetFilename>
+        <TargetFilename condition="end with">.ps1</TargetFilename>
+        <TargetFilename condition="end with">.hta</TargetFilename>
+        <TargetFilename condition="end with">.scr</TargetFilename>
+        <TargetFilename condition="contains">\Startup\</TargetFilename>
+        <TargetFilename condition="contains">\Temp\</TargetFilename>
+      </FileCreate>
+    </RuleGroup>
+
+    <!-- EID 12/13: Registry. Persistence + ETW/defense disable. -->
+    <RuleGroup name="registry" groupRelation="or">
+      <RegistryEvent onmatch="include">
+        <TargetObject condition="contains">\CurrentVersion\Run</TargetObject>
+        <TargetObject condition="contains">\CurrentVersion\RunOnce</TargetObject>
+        <TargetObject condition="contains">\Image File Execution Options\</TargetObject>
+        <TargetObject condition="contains">\Services\</TargetObject>
+        <TargetObject condition="contains">\Windows\System32\Autochk\</TargetObject>
+        <TargetObject condition="contains">\Microsoft\Windows\WindowsAI\</TargetObject>
+        <TargetObject condition="contains">EnableScriptBlockLogging</TargetObject>
+        <TargetObject condition="contains">\WMI\Autologger\</TargetObject>   <!-- ETW logger tamper -->
+      </RegistryEvent>
+    </RuleGroup>
+
+    <!-- EID 17/18: Named pipes. C2 framework patterns. -->
+    <RuleGroup name="pipes" groupRelation="or">
+      <PipeEvent onmatch="include">
+        <PipeName condition="begin with">\msagent_</PipeName>
+        <PipeName condition="begin with">\MSSE-</PipeName>
+        <PipeName condition="begin with">\postex_</PipeName>
+        <PipeName condition="begin with">\status_</PipeName>
+        <PipeName condition="begin with">\sliver-</PipeName>
+        <PipeName condition="contains">\mojo.</PipeName>
+      </PipeEvent>
+    </RuleGroup>
+
+    <!-- EID 22: DNS query. Tunneling / DGA / C2 resolution. -->
+    <RuleGroup name="dns" groupRelation="or">
+      <DnsQuery onmatch="exclude">
+        <QueryName condition="end with">.microsoft.com</QueryName>
+        <QueryName condition="end with">.windowsupdate.com</QueryName>
+        <QueryName condition="end with">.office.com</QueryName>
+        <QueryName condition="end with">.msftncsi.com</QueryName>
+        <QueryName condition="end with">.in-addr.arpa</QueryName>
+      </DnsQuery>
+    </RuleGroup>
+
+    <!-- EID 25: ProcessTampering (hollowing / herpaderping / image patch fallout). -->
+    <RuleGroup name="proc_tamper" groupRelation="or">
+      <ProcessTampering onmatch="exclude">
+        <Image condition="end with">SearchIndexer.exe</Image>
+      </ProcessTampering>
+    </RuleGroup>
+
+  </EventFiltering>
+</Sysmon>

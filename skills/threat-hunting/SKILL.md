@@ -1,410 +1,121 @@
 ---
 name: threat-hunting
-description: Proactive threat hunting, IOC extraction, MITRE ATT&CK mapping, behavioral anomaly detection, log analysis correlation
+description: Hypothesis-driven threat hunting & detection engineering — ATT&CK v18 Detection-Strategies/Analytics, Sigma rule + correlation engineering with Detection-as-Code CI, Windows endpoint hunting (Sysmon 15/ETW-AMSI tamper/LSASS/LOLBins), network C2 hunting (JA4+, beaconing/RITA, DNS tunneling), cloud-identity hunting (Entra device-code/OAuth/PRT, CloudTrail), and Atomic Red Team purple-team validation
 metadata:
   type: defensive
   phase: detection
-  tools: splunk, elasticsearch, sigma, yara, osquery, velociraptor, sysmon
+  tools: sigma-cli, pysigma, hayabusa, chainsaw, velociraptor, sysmon, zeek, rita, ja4, atomic-red-team, caldera, splunk, sentinel, defender, kql
+  mitre: TA0043
 kill_chain:
   phase: [report]
   step: [8]
-  attck_tactics: [TA0043]
+  attck_tactics: [TA0043, TA0042, TA0011, TA0006, TA0005]
+  attck_techniques: [T1059.001, T1003.001, T1562.001, T1562.002, T1218, T1105, T1071, T1071.001, T1071.004, T1571, T1572, T1528, T1550.001, T1078.004, T1098, T1543.003, T1070.001, T1558.003, T1003.006]
 depends_on: [red-team-ops, incident-response]
 feeds_into: []
-inputs: [finding_records, log_data, ioc_list]
-outputs: [sigma_rules, attck_navigator_export, detection_report]
+inputs: [finding_records, log_data, ioc_list, evtx, zeek_logs, cloudtrail, sigin_logs]
+outputs: [sigma_rules, correlation_rules, attck_navigator_export, coverage_matrix, detection_report, hunt_findings]
+references:
+  - references/methodology-hunt-loop.md
+  - references/windows-endpoint-hunting.md
+  - references/sigma-rule-engineering.md
+  - references/network-c2-hunting.md
+  - references/cloud-identity-hunting.md
+  - references/purple-team-validation.md
+scripts:
+  - scripts/dac_validate.py
+  - scripts/evtx_hunt.py
+  - scripts/beacon_hunter.py
+  - scripts/cloudtrail_hunt.py
+  - scripts/coverage_matrix.py
+  - scripts/entra_hunt.kql
+  - scripts/sigma_pipeline.sh
+  - scripts/sysmon_config_2025.xml
 ---
 
-# Threat Hunting & Detection
+# Threat Hunting & Detection Engineering
 
 ## When to Activate
 
-- Proactive threat hunting across infrastructure
-- Correlating security events across multiple sources
-- Detecting anomalous behavior patterns
-- Mapping attacks to MITRE ATT&CK framework
-- Writing detection rules (Sigma, YARA, Snort)
-- Incident response triage
+- Hypothesis-driven hunting across endpoint, network, cloud, and identity telemetry
+- Writing & shipping detections (Sigma + correlation) as version-controlled code in CI
+- Mapping & measuring coverage against MITRE ATT&CK v18 (Detection Strategies / Analytics)
+- Hunting Windows post-exploitation: ETW/AMSI tampering, LSASS dumping, LOLBins, injection
+- Hunting C2 in encrypted traffic: JA4+/JA4X fingerprints, beaconing, DNS tunneling
+- Hunting cloud-identity attacks: Entra device-code/OAuth phishing, PRT theft, CloudTrail abuse
+- Purple-team validation: emulate ATT&CK with Atomic Red Team/Caldera, find detection gaps
+- Triaging EVTX/Zeek/CloudTrail offline during IR without a SIEM
 
-## MITRE ATT&CK Mapping
+## Technique Map
 
-### Common Techniques to Hunt
+| Technique | ATT&CK | CWE | Reference | Script |
+|-----------|--------|-----|-----------|--------|
+| Hypothesis-driven hunt loop (PEAK/TaHiTI) | TA0043 | CWE-778 | references/methodology-hunt-loop.md | - |
+| ATT&CK v18 Detection-Strategies / Analytics mapping | TA0043 | CWE-778 | references/methodology-hunt-loop.md | scripts/coverage_matrix.py |
+| Detection-as-Code CI (lint + compile) | TA0043 | CWE-778 | references/methodology-hunt-loop.md | scripts/dac_validate.py |
+| Sysmon 15 PPL + tamper/visibility-gap | T1562.001 | CWE-693 | references/windows-endpoint-hunting.md | scripts/sysmon_config_2025.xml |
+| ETW / AMSI in-memory patch detection | T1562.001, T1562.002 | CWE-693 | references/windows-endpoint-hunting.md | scripts/evtx_hunt.py |
+| LSASS credential-access handle hunt | T1003.001 | CWE-522 | references/windows-endpoint-hunting.md | scripts/evtx_hunt.py |
+| LOLBin / process-tree anomaly hunt | T1218, T1105, T1059 | CWE-78 | references/windows-endpoint-hunting.md | scripts/evtx_hunt.py |
+| Sigma rule + correlation engineering | TA0043 | CWE-778 | references/sigma-rule-engineering.md | scripts/dac_validate.py |
+| EVTX triage (Hayabusa/Chainsaw/Velociraptor) | TA0043 | CWE-778 | references/sigma-rule-engineering.md | scripts/sigma_pipeline.sh |
+| JA4+/JA4X C2 fingerprinting | T1071.001 | CWE-300 | references/network-c2-hunting.md | scripts/beacon_hunter.py |
+| Beaconing / long-conn / prevalence (RITA-style) | T1071, T1571 | CWE-940 | references/network-c2-hunting.md | scripts/beacon_hunter.py |
+| DNS tunneling / DGA / DoH abuse | T1071.004, T1572 | CWE-940 | references/network-c2-hunting.md | scripts/beacon_hunter.py |
+| Entra device-code / OAuth consent phishing | T1528, T1566 | CWE-287 | references/cloud-identity-hunting.md | scripts/entra_hunt.kql |
+| PRT theft / token replay | T1550.001 | CWE-522 | references/cloud-identity-hunting.md | scripts/entra_hunt.kql |
+| AWS CloudTrail abuse / log tampering | T1078.004, T1098, T1562.008 | CWE-269 | references/cloud-identity-hunting.md | scripts/cloudtrail_hunt.py |
+| Atomic Red Team / Caldera validation | TA0043 | CWE-778 | references/purple-team-validation.md | scripts/coverage_matrix.py |
+| Coverage matrix + ATT&CK Navigator + gap report | TA0043 | CWE-778 | references/purple-team-validation.md | scripts/coverage_matrix.py |
 
-| Tactic | Technique | Detection Focus |
-|--------|-----------|----------------|
-| Initial Access | Phishing, Exploit Public-Facing App | Email gateways, web WAF logs |
-| Execution | PowerShell, WMI, Scheduled Tasks | PS logs, Sysmon Event ID 1 |
-| Persistence | Registry Run Keys, Scheduled Tasks | Registry monitoring, task scheduler logs |
-| Privilege Escalation | Token Manipulation, Exploitation | Access token changes, exploit indicators |
-| Defense Evasion | Obfuscated Files, Indicator Removal | File entropy analysis, log gap detection |
-| Credential Access | LSASS Memory, OS Credential Dumping | LSASS access patterns, dump file creation |
-| Discovery | Network Share Discovery, System Info Discovery | Net commands, systeminfo execution |
-| Lateral Movement | SMB/Windows Admin Shares, WMI | SMB connection patterns, remote WMI calls |
-| Collection | Data Staged, Archive Collected Data | Unusual archive operations, staging directories |
-| Exfiltration | Exfiltration Over C2, DNS | DNS query volume anomalies, C2 beacon patterns |
+## Quick Start
 
-## Log Analysis & Correlation
-
-### Key Event Sources
-```
-# Windows (Sysmon)
-Event ID 1: Process creation
-Event ID 3: Network connection
-Event ID 7: Image loaded
-Event ID 11: File creation
-Event ID 12: Registry object added/modified
-Event ID 13: Registry value set
-Event ID 15: File creation stream hash
-Event ID 17: Pipe created
-Event ID 22: DNS query
-Event ID 25: Process tampering
-
-# Linux (auditd)
-type=EXECVE: Command execution
-type=CONNECT: Network connections
-type=PATH: File access
-type=SYSCALL: System calls (esp. ptrace, execve)
-
-# Network (Zeek/Suricata)
-DNS queries and responses
-HTTP requests and responses
-SSL/TLS certificate analysis
-File extraction and hashing
-```
-
-### Correlation Queries
-```sql
--- Splunk: PowerShell encoded command
-index=security EventCode=4688 
-| where match(Process_Command_Line, "powershell.*-enc") 
-| stats count by Computer, User, _time
-| where count > 3
-
--- Splunk: Lateral movement via PsExec
-index=security EventCode=7045 Service_Name="PSEXESVC"
-| stats count by Computer, User
-| where count > 1
-
--- Sigma equivalent
-detection:
-    selection:
-        EventID: 4688
-        CommandLine|contains|all:
-            - 'powershell'
-            - '-enc'
-            - '-encodedcommand'
-    condition: selection
-```
-
-## Behavioral Anomaly Detection
-
-### Baselines
-```
-# Normal user behavior:
-- Login times and duration
-- Common processes and commands
-- Network destinations and volumes
-- File access patterns
-
-# Anomaly indicators:
-- Processes running at unusual hours
-- New network destinations (never before seen)
-- Sudden increase in data access volume
-- Commands that deviate from user's normal pattern
-- Service installations on workstations
-```
-
-### Hunting Hypotheses
-```
-# Generate and test hunting hypotheses:
-1. "If there's credential dumping, we'll see Mimikatz or similar tool execution"
-2. "If lateral movement occurs, we'll see new admin share connections"
-3. "If data exfiltration happens, we'll see unusual outbound DNS or HTTPS traffic"
-4. "If there's persistence, we'll see new scheduled tasks or registry modifications"
-
-# Validate with:
-- Historical log analysis (last 30-90 days)
-- Endpoint telemetry (processes, network, files)
-- Network flow data (NetFlow, PCAP)
-- Cloud audit logs (CloudTrail, Azure Activity Log)
-```
-
-## Detection Rule Development
-
-### Sigma Rule Template
-```yaml
-title: Suspicious PowerShell Execution
-id: rule-uuid-here
-status: experimental
-description: Detects PowerShell execution with encoded commands and download cradles
-references:
-    - https://attack.mitre.org/techniques/T1059/001/
-author: analyst
-date: 2026/05/19
-logsource:
-    category: process_creation
-    product: windows
-detection:
-    selection:
-        Image|endswith: '\powershell.exe'
-    encoded:
-        CommandLine|contains:
-            - '-enc'
-            - '-encodedcommand'
-    download:
-        CommandLine|contains:
-            - 'DownloadString'
-            - 'DownloadFile'
-            - 'IEX'
-            - 'Invoke-Expression'
-    condition: selection and (encoded or download)
-falsepositives:
-    - Legitimate IT automation scripts
-    - Software deployment tools
-level: high
-tags:
-    - attack.execution
-    - attack.t1059.001
-```
-
-### YARA Network Detection
-```yara
-rule C2_Beacon_Pattern {
-    meta:
-        description = "Detects C2 beacon traffic patterns"
-    strings:
-        $beacon_http = /POST \/gate\.php HTTP\/1\.1\r\nHost: [^\r\n]+\r\nUser-Agent: Mozilla\/[\d.]+/
-        $beacon_dns = /[a-z0-9]{32,}\.attacker-domain\.(com|net|org)/
-    condition:
-        $beacon_http or $beacon_dns
-}
-```
-
-## Advanced: KQL/SPL Hunting Queries
-
-### Splunk (SPL) Advanced Queries
-```spl
-| Detect credential dumping (LSASS access)
-index=sysmon EventCode=10 TargetImage="*lsass.exe"
-| where NOT match(SourceImage, "(?i)(csrss|services|svchost|wininit|MsMpEng|CrowdStrike)")
-| stats count values(SourceImage) as tools by Computer
-| where count > 0
-
-| Detect DCSync (Directory Replication)
-index=security EventCode=4662 
-| where match(Properties, "(?i)(1131f6aa|1131f6ad|89e95b76)")
-| where NOT match(SubjectUserName, "(?i)(\\$|MSOL_)")
-| stats count by SubjectUserName, ObjectName
-
-| Detect Kerberoasting
-index=security EventCode=4769 TicketEncryptionType=0x17 ServiceName!="krbtgt" ServiceName!="*$"
-| stats count dc(ServiceName) as unique_spns by IpAddress, TargetUserName
-| where unique_spns > 3
-
-| Detect lateral movement (remote service creation)
-index=security EventCode=7045
-| where NOT match(Service_File_Name, "(?i)(windows|program files|syswow64)")
-| stats count values(Service_File_Name) as services by Computer, SubjectUserName
-
-| Detect pass-the-hash (NTLM type 3 with no type 1/2)
-index=security EventCode=4624 LogonType=3 AuthenticationPackageName=NTLM
-| where LmPackageName="NTLM V2" AND TargetUserName!="ANONYMOUS LOGON"
-| stats count by SourceNetworkAddress, TargetUserName, WorkstationName
-| where count > 5
-
-| Detect process injection (Sysmon CreateRemoteThread)
-index=sysmon EventCode=8
-| where SourceImage!=TargetImage
-| where NOT match(SourceImage, "(?i)(csrss|lsass|services|svchost)")
-| stats count values(TargetImage) as targets by SourceImage, Computer
-```
-
-### KQL (Microsoft Sentinel / Defender)
-```kql
-// Detect encoded PowerShell execution
-DeviceProcessEvents
-| where FileName =~ "powershell.exe"
-| where ProcessCommandLine has_any ("-enc", "-encodedcommand", "frombase64")
-| where ProcessCommandLine !has "Microsoft" // exclude legit
-| project Timestamp, DeviceName, AccountName, ProcessCommandLine
-| summarize count() by DeviceName, AccountName, bin(Timestamp, 1h)
-| where count_ > 3
-
-// Detect LSASS credential access
-DeviceProcessEvents
-| where FileName =~ "lsass.exe"
-| join kind=inner (
-    DeviceFileEvents | where ActionType == "FileCreated" | where FileName endswith ".dmp"
-) on DeviceId
-| project Timestamp, DeviceName, InitiatingProcessFileName
-
-// Detect suspicious named pipe creation (C2 indicators)
-DeviceEvents
-| where ActionType == "NamedPipeEvent"
-| where AdditionalFields has_any ("\\msagent_", "\\MSSE-", "\\postex_", "\\status_")
-| summarize count() by DeviceName, PipeName=tostring(parse_json(AdditionalFields).PipeName)
-
-// Detect Kerberos ticket anomalies (Golden/Silver ticket)
-IdentityQueryEvents
-| where ActionType == "LDAP query"
-| where QueryTarget has "krbtgt"
-| join kind=inner (
-    IdentityLogonEvents | where LogonType == "Kerberos"
-    | where isempty(AccountDomain) or AccountDomain != DeviceName
-) on AccountName
-| project Timestamp, AccountName, DeviceName, QueryTarget
-
-// Hunt for living-off-the-land binaries (LOLBins)
-let lolbins = dynamic(["certutil.exe","mshta.exe","regsvr32.exe","rundll32.exe",
-    "msiexec.exe","wmic.exe","cmstp.exe","msxsl.exe","ieexec.exe"]);
-DeviceProcessEvents
-| where FileName in~ (lolbins)
-| where ProcessCommandLine has_any ("http","ftp","\\\\","base64","-decode","/i:")
-| project Timestamp, DeviceName, FileName, ProcessCommandLine, AccountName
-```
-
-## Advanced: Behavioral Detection Patterns
-
-### Process Behavior Profiling
-```yaml
-# Detect anomalous process behavior via baseline deviation
-
-# Baseline: normal parent-child relationships
-normal_trees:
-  - explorer.exe → chrome.exe, outlook.exe, teams.exe
-  - services.exe → svchost.exe, spoolsv.exe
-  - svchost.exe → WerFault.exe, RuntimeBroker.exe
-  - winlogon.exe → userinit.exe → explorer.exe
-
-# Anomalous (hunt for these):
-suspicious_trees:
-  - winword.exe → cmd.exe → powershell.exe  # macro execution
-  - outlook.exe → powershell.exe  # phishing payload
-  - svchost.exe → cmd.exe → whoami.exe  # post-exploitation
-  - w3wp.exe → cmd.exe  # webshell
-  - sqlservr.exe → cmd.exe → certutil.exe  # SQL injection → download
-  - wmiprvse.exe → powershell.exe  # WMI lateral movement
-
-# Process creation frequency anomaly:
-# If process X normally runs 0-2 times/day but suddenly runs 50 times → investigate
-# Especially: net.exe, nltest.exe, dsquery.exe, csvde.exe (AD recon)
-```
-
-### Network Behavior Anomalies
-```yaml
-# DNS-based detection
-dns_anomalies:
-  - query_length > 50 chars  # DNS tunneling (iodine, dnscat2)
-  - TXT record queries to unusual domains  # C2 over DNS
-  - high volume queries to single domain  # beaconing
-  - queries to newly registered domains (< 30 days)  # DGA or fresh C2
-  - NXDOMAIN spike from single host  # DGA enumeration
-
-# Beaconing detection (C2 callback patterns)
-beaconing_indicators:
-  - Regular interval connections (±jitter) to same destination
-  - Consistent payload sizes in both directions
-  - Connections to IP addresses (no DNS resolution)
-  - TLS connections with self-signed or unusual certificates
-  - JA3/JA4 hash matching known C2 frameworks
-
-# Detection formula:
-# Calculate inter-arrival times between connections to same dest
-# If standard_deviation / mean < 0.3 → likely beaconing
-# Human traffic: irregular, bursty
-# C2 traffic: regular, consistent
-```
-
-### Sigma Rules for Advanced Threats
-```yaml
-title: Potential DCSync Attack
-id: 5a6c7e3b-8d4f-4a2e-9c1b-7f3e8d2a1b4c
-status: stable
-description: Detects replication requests from non-DC sources
-logsource:
-    product: windows
-    service: security
-detection:
-    selection:
-        EventID: 4662
-        Properties|contains:
-            - '1131f6aa-9c07-11d1-f79f-00c04fc2dcd2'  # DS-Replication-Get-Changes
-            - '1131f6ad-9c07-11d1-f79f-00c04fc2dcd2'  # DS-Replication-Get-Changes-All
-    filter:
-        SubjectUserName|endswith: '$'
-        SubjectUserName|contains: 'DC'
-    condition: selection and not filter
-level: critical
-tags:
-    - attack.credential_access
-    - attack.t1003.006
----
-title: Suspicious LSASS Access (Credential Dumping)
-id: 7b2e4f1a-9c3d-4e5f-8a6b-1c2d3e4f5a6b
-logsource:
-    product: windows
-    category: process_access
-detection:
-    selection:
-        TargetImage|endswith: '\lsass.exe'
-        GrantedAccess|contains:
-            - '0x1010'   # PROCESS_QUERY_LIMITED_INFORMATION + PROCESS_VM_READ
-            - '0x1410'   # + PROCESS_QUERY_INFORMATION
-            - '0x1438'   # Full access for dump
-            - '0x143a'
-    filter_system:
-        SourceImage|startswith:
-            - 'C:\Windows\System32\'
-            - 'C:\Program Files\Windows Defender\'
-    condition: selection and not filter_system
-level: high
----
-title: Cobalt Strike Named Pipe Pattern
-id: 3e8f2a1b-4c5d-6e7f-8a9b-0c1d2e3f4a5b
-logsource:
-    product: windows
-    category: pipe_created
-detection:
-    selection:
-        PipeName|re: '\\\\(MSSE-|msagent_|postex_|status_|mojo\.\d+\.\d+\.\d+)'
-    condition: selection
-level: critical
-```
-
-## Advanced: Purple Team Exercises
-
-### Atomic Red Team Integration
 ```bash
-# Execute specific ATT&CK techniques and validate detection
+# 0. Deploy hunting telemetry baseline (Sysmon 15+, PPL self-protected)
+sysmon -accepteula -i scripts/sysmon_config_2025.xml      # or: sysmon -c <file> to update
 
-# T1003.001 — LSASS Memory Dump
-Invoke-AtomicTest T1003.001 -TestNumbers 1,2,3
-# Validate: Sysmon Event 10 (ProcessAccess to lsass) fires
-# Validate: EDR alert generated within 60 seconds
+# 1. Offline endpoint triage over collected EVTX (no SIEM)
+python3 scripts/evtx_hunt.py /cases/host01/EVTX --min-severity medium --json host01.json
 
-# T1059.001 — PowerShell Execution
-Invoke-AtomicTest T1059.001 -TestNumbers 1
-# Validate: PowerShell ScriptBlock logging captures payload
-# Validate: Sigma rule "Suspicious PowerShell Execution" triggers
+# 2. Network: hunt C2 beacons / DNS tunneling over Zeek logs (+ optional JA4 blocklist)
+zeek -r capture.pcap LogAscii::use_json=T
+python3 scripts/beacon_hunter.py --conn conn.log --dns dns.log \
+        --ja4-blocklist bad_ja4.txt --min-score 0.7
 
-# T1053.005 — Scheduled Task Persistence
-Invoke-AtomicTest T1053.005 -TestNumbers 1
-# Validate: Event ID 4698 (task created) logged
-# Validate: Task with suspicious binary path flagged
+# 3. Cloud/identity: paste scripts/entra_hunt.kql into Sentinel/Defender;
+#    triage AWS offline:
+python3 scripts/cloudtrail_hunt.py /cases/cloudtrail/ --json ct_findings.json
 
-# Detection gap analysis:
-# Run all techniques → check which have NO detection
-# Priority: techniques with no detection + high impact = critical gap
+# 4. Detection-as-Code: lint + compile your Sigma repo for CI (fail-fast)
+python3 scripts/dac_validate.py rules/ --backend splunk --pipeline sysmon --fail-on-error
+./scripts/sigma_pipeline.sh rules/ build/ splunk microsoft365defender elasticsearch
+
+# 5. Purple-team validate + measure coverage (ATT&CK v18 Navigator layer + gaps)
+Invoke-AtomicTest T1003.001 -TestNumbers 1,2,3   # lab only; -Cleanup after
+python3 scripts/coverage_matrix.py --rules rules/ --atomic-results atomic_results.json \
+        --watchlist watchlist.txt --navigator-out attack_layer.json --gaps-out gaps.csv
 ```
 
-### Detection Coverage Matrix
-```
-| ATT&CK Technique | Sysmon | EDR | SIEM Rule | Network | Gap? |
-|-------------------|--------|-----|-----------|---------|------|
-| T1003.001 LSASS  | Event10| Yes | Sigma     | N/A     | No   |
-| T1059.001 PS     | Event1 | Yes | SPL query | N/A     | No   |
-| T1021.002 SMB    | Event3 | Yes | Sigma     | Zeek    | No   |
-| T1071.001 HTTP C2| N/A    | Partial| N/A    | JA3     | Yes  |
-| T1055.012 Hollow | Event25| Yes | N/A       | N/A     | Partial|
-| T1134.001 Token  | N/A    | Partial| N/A    | N/A     | Yes  |
-```
+## OPSEC & Detection (summary)
+
+| Technique | Telemetry / IOC | Detection (Sigma / EDR) | OPSEC note |
+|-----------|-----------------|--------------------------|------------|
+| ETW/AMSI patch | RWX in ntdll/amsi; ScriptBlock w/ AmsiScanBuffer+VirtualProtect | Sigma AMSI/ETW patch rule; Sysmon EID 25; ETW-TI (kernel) | Userland patch defeats single source — correlate EID25 + ETW-TI + behavior |
+| Sysmon kill | System 7036/7034, SysmonDrv unload, EPS drop to 0 | Visibility-gap metric on chatty hosts | Sysmon 15 is PPL; attacker kills agent instead — alert on stop/unload |
+| LSASS dump | EID 10 handle to lsass + `.dmp` write | LSASS-access Sigma; access-mask + non-system source | Baseline your own EDR/AV SourceImage set first or you flood the SOC |
+| LOLBin abuse | certutil/mshta/regsvr32 + http/decode/scrobj | LOLBin Sigma; parent→child tree anomalies | Hunt cold data first; live triage tips an EDR-aware operator |
+| Beaconing | periodic intervals, uniform sizes, low prevalence | beacon_hunter.py CV<0.3; RITA; long-conn on non-interactive port | Need days of logs — small PCAPs inflate FPs |
+| JA4X C2 | randomized certs sharing one JA4X (Sliver/Havoc) | JA4 segment-pivot; JA4X blocklist at TLS-terminating proxy | TLS 1.3 encrypts certs — capture at egress/proxy, don't block on FP alone |
+| DNS tunneling | long/high-entropy subdomains, TXT volume, NXDOMAIN spikes | DNS entropy/volume scoring; DoH-to-public Sigma | Baseline normal long-FQDN apps (CDNs) before alerting |
+| Device-code phish | `deviceCode` sign-in, broker/OfficeHome AppId, new ASN | entra_hunt.kql #1+#2; Elastic open rules | Baseline sanctioned device-code apps; not every device-code is evil |
+| PRT theft | `primaryRefreshToken` from multi-geo same day | PRT KQL + LSASS/cloudAP endpoint join | Control-plane is the ONLY evidence — retain logs ≥90d before you need them |
+| CloudTrail abuse | StopLogging/DeleteTrail, CreateAccessKey for others, Describe* burst | cloudtrail_hunt.py; Athena tamper query | Attackers disable logging early; enable org-wide all-region trail up front |
+
+## Deep Dives
+
+- **references/methodology-hunt-loop.md** — PEAK/TaHiTI hunt loop, ATT&CK v18 Detection Strategies (`DETxxxx`) & Analytics (`ANxxxx`) replacing legacy data sources, Detection-as-Code CI/CD (PTEFv4), visibility-gap detection.
+- **references/windows-endpoint-hunting.md** — Sysmon 15 PPL & tamper detection, ETW/AMSI in-memory patch detection (ETW-TI, EID 25, ScriptBlock), LSASS handle hunting, LOLBins & process-tree anomalies.
+- **references/sigma-rule-engineering.md** — Sigma rule anatomy, correlation rules (value_count/temporal), pySigma/sigma-cli compile, Hayabusa/Chainsaw/Velociraptor 0.74 native-Sigma EVTX triage, AI-assisted authoring (SigmaGen/Uncoder).
+- **references/network-c2-hunting.md** — JA4+/JA4S/JA4H/JA4X fingerprinting, Sliver/Havoc shared JA4X, RITA-style beaconing & long-connection stats, DNS tunneling/DGA/DoH, C2 framework signature cheat-sheet.
+- **references/cloud-identity-hunting.md** — Entra device-code phishing (STORM-2372, Tycoon2FA, EvilTokens), OAuth consent abuse, PRT theft, Graph enumeration, AWS CloudTrail abuse & tampering.
+- **references/purple-team-validation.md** — Atomic Red Team unit tests, MITRE Caldera chained emulation, ATT&CK v18-aware coverage matrix, Navigator layer generation, prioritized gap analysis.
