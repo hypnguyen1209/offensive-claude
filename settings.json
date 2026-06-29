@@ -34,7 +34,9 @@
       "TodoWrite(*)",
       "mcp__ida-multi-mcp__*",
       "mcp__jadx-mcp-server__*",
-      "mcp__mitm-search__*"
+      "mcp__mitm-search__*",
+      "mcp__burp__*",
+      "mcp__caido__*"
     ],
     "deny": [
       "Bash(rm -rf /)",
@@ -51,6 +53,20 @@
     "mitm-search": {
       "transport": "http",
       "url": "https://mcp.mitm.vn/mcp"
+    }
+  },
+  "_mcpServers_examples": {
+    "_note": "Live intercepting-proxy MCPs. Move an entry into mcpServers above to enable. Use ONE of burp/caido. Always pipe captured traffic through skills/coding-mastery/scripts/_lib/redact_headers.py. See skills/web-pentest/references/proxy-mcp-integration.md.",
+    "burp": {
+      "transport": "stdio",
+      "command": "java",
+      "args": ["-jar", "/path/to/burp-mcp-server.jar"],
+      "_doc": "PortSwigger official Burp Suite MCP extension (install via BApp Store, then run its server)."
+    },
+    "caido": {
+      "transport": "http",
+      "url": "http://127.0.0.1:8085/mcp",
+      "_doc": "Caido MCP plugin endpoint (enable the MCP plugin in Caido, adjust host/port)."
     }
   }
 }

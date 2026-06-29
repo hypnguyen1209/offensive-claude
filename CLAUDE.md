@@ -76,6 +76,7 @@ Agents are loaded from `./agents/` directory:
 | reverse-engineer | Binary analysis and vulnerability discovery |
 | ai-researcher | AI/ML architecture, training, and research |
 | network-analyst | Protocol analysis and network defense |
+| finding-validator | Adversarial exploitability judge — PASS/KILL/DOWNGRADE verdicts on findings |
 
 ## Engagement Workflow — Cyber Kill Chain
 
@@ -179,6 +180,7 @@ Agents are loaded from `./agents/` directory:
 | reverse-engineer | Execution | 2,4,5 | Binary analysis, vulnerability discovery |
 | ai-researcher | Execution | 1,2,4 | AI/ML security assessment |
 | network-analyst | Analysis | 1,3,6,7 | Protocol analysis, C2 review |
+| finding-validator | Analysis | 4,7,8 | Adversarial exploitability verdict (PASS/KILL/DOWNGRADE) |
 
 ## Output Standards
 
@@ -196,6 +198,8 @@ Agents are loaded from `./agents/` directory:
 This is offensive tooling for **authorized** engagements (see [`TERMS.md`](TERMS.md)). Safety controls are executable, not prose:
 
 - **Scope is enforced.** Phase 0 emits `.engage/scope/scope.json` (schema: `templates/scope/scope.schema.json`); every active script confirms a target is in-scope via `skills/coding-mastery/scripts/_lib/scope_guard.py` before touching it. Bash scripts source `skills/coding-mastery/scripts/lib.sh` and call `_in_scope`.
-- **Findings are validated.** `skills/vulnerability-analysis/scripts/validate_findings.py` rejects ungrounded findings and per-class false positives; `/engage.gate` runs it.
+- **Findings are validated.** `skills/vulnerability-analysis/scripts/validate_findings.py` (structured proof signals) rejects ungrounded findings and per-class false positives; `/engage.gate` runs it, and the adversarial `finding-validator` agent issues the PASS/KILL/DOWNGRADE verdict.
+- **Outward actions are gated.** `skills/coding-mastery/scripts/_lib/action_guard.py` gives a 3-state decision (allow / require_approval / block): out-of-scope → block, read-only methods auto-allow, mutating verbs need approval (unless ROE opts in), per-host circuit breaker stops pounding a failing/blocking target.
+- **Live traffic is redacted at the boundary.** When a proxy MCP (Burp/Caido — see `skills/web-pentest/references/proxy-mcp-integration.md`) feeds captured traffic to the model, pipe it through `skills/coding-mastery/scripts/_lib/redact_headers.py` so Authorization/Cookie/API-key values are masked before they reach context or a report.
 - **Secrets never hit logs.** Build auth headers with `skills/coding-mastery/scripts/_lib/http_creds.py` (`Cred.from_env(...).as_headers()`) — tokens come from the environment and are masked in repr/logs. Do not hard-code or `.env`-store credentials.
 - **Tests gate changes.** Safety-critical scripts are covered by `tests/` (run `pytest`); CI runs them on push (`.github/workflows/tests.yml`).

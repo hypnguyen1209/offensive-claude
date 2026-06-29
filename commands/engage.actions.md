@@ -20,6 +20,12 @@ Loads:
 - `actions/objectives.md` — Engagement objectives tracker
 - `actions/collection-plan.md` — Data collection and handling plan
 
+> **Action gate (non-negotiable):** every outward action in this phase passes through
+> `skills/coding-mastery/scripts/_lib/action_guard.py` — out-of-scope targets are blocked, mutating/
+> destructive operations require explicit approval (unless the ROE sets `allow_mutating`), and the
+> per-host circuit breaker halts activity against a failing target. Destructive actions (data
+> deletion, account changes, persistence on systems not authorized for it) are blocked outright.
+
 ### 2. Objective Review
 Retrieves engagement objectives from Phase 0 scope document:
 - Lists all defined objectives

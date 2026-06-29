@@ -1,6 +1,6 @@
 # Offensive Security Research Config for Claude Code
 
-A spec-driven offensive security framework for Claude Code — structured engagement workflows based on the Cyber Kill Chain, 30 specialized skills (multi-file progressive-disclosure), 6 collaborative agents, and a shared 47-file vulnerability reference library. Inspired by [GitHub's spec-kit](https://github.com/github/spec-kit) methodology.
+A spec-driven offensive security framework for Claude Code — structured engagement workflows based on the Cyber Kill Chain, 30 specialized skills (multi-file progressive-disclosure), 7 collaborative agents, and a shared 47-file vulnerability reference library. Inspired by [GitHub's spec-kit](https://github.com/github/spec-kit) methodology.
 
 ## Quick Setup
 
@@ -163,7 +163,7 @@ a Sigma/EDR detection signature and OPSEC notes, and cites current (2024–2026)
 | 29 | browser-exploitation | Weaponize, Exploit | V8/JSC JIT type confusion, heap-sandbox & renderer→browser escape, Electron/IPC RCE |
 | 30 | macos-offensive | Exploit, Install | TCC/Gatekeeper bypass, keychain, LaunchAgent persistence, ESF evasion *(planned)* |
 
-## Agents (6)
+## Agents (7)
 
 | Agent | Layer | Active Phases | Role |
 |-------|-------|---------------|------|
@@ -173,6 +173,7 @@ a Sigma/EDR detection signature and OPSEC notes, and cites current (2024–2026)
 | reverse-engineer | Execution | Weaponize, Exploit, Install | Binary analysis, vulnerability discovery |
 | ai-researcher | Execution | Recon, Weaponize, Exploit | AI/ML security assessment |
 | network-analyst | Analysis | Recon, Delivery, C2, Actions | Protocol analysis, C2 review |
+| finding-validator | Analysis | Exploit, Actions, Report | Adversarial PASS/KILL/DOWNGRADE verdict on findings |
 
 Agents collaborate through structured handoffs — planning agents feed execution agents, execution agents feed analysis agents for validation.
 

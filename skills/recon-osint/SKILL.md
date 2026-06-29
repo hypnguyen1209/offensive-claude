@@ -29,6 +29,8 @@ scripts:
   - scripts/cloud_asset_enum.py
   - scripts/breach_intel.py
   - scripts/cve_prioritizer.py
+  - scripts/wordlist_ranker.py
+  - scripts/hackerone_public_recon.py
 ---
 
 # Reconnaissance & OSINT
