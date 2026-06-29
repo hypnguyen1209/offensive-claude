@@ -1,435 +1,119 @@
 ---
 name: reverse-engineering
-description: Binary analysis, disassembly, decompilation, firmware RE, protocol reverse engineering, anti-reversing bypass, malware unpacking
+description: Binary & firmware reverse engineering — static triage + decompilation (Ghidra 11.4 / IDA / Binary Ninja + AI/MCP assist), dynamic instrumentation (GDB/Frida 17/Triton/angr), anti-reversing & packer bypass (ScyllaHide/TitanHide, VMProtect/Themida unpacking), OLLVM/VM-protector deobfuscation, UEFI/BIOS firmware RE + Secure Boot bypass research (LogoFAIL/PKfail/CVE-2024-7344), and patch-diffing for n-day generation
 metadata:
   type: offensive
   phase: analysis
-  tools: ida, ghidra, radare2, binary-ninja, gdb, frida, x64dbg, angr, z3, capstone, unicorn
+  tools: ghidra, ida, binary-ninja, radare2, rizin, gdb-gef, frida, x64dbg, x96dbg, triton, angr, unicorn, capstone, scyllahide, titanhide, novmp, bindiff, diaphora, ghidriff, binwalk, uefitool, chipsec, kaitai-struct
+  mitre: TA0042
 kill_chain:
   phase: [weaponize, exploit]
   step: [2, 4]
-  attck_tactics: [TA0042, TA0002]
+  attck_tactics: [TA0042, TA0002, TA0005]
+  attck_techniques: [T1027, T1027.002, T1027.007, T1027.009, T1027.013, T1620, T1140, T1622, T1497, T1497.001, T1497.003, T1542.001, T1542.003, T1592.002, T1203, T1518.001]
 depends_on: [recon-osint]
-feeds_into: [exploit-development, malware-analysis]
-inputs: [binary_samples, firmware_images]
-outputs: [disassembly_report, vulnerability_details, protocol_specs]
+feeds_into: [exploit-development, malware-analysis, vulnerability-analysis, mobile-pentest, windows-mitigations]
+inputs: [binary_samples, firmware_images, packed_malware, patched_binaries, pcap_captures, unknown_file_formats]
+outputs: [disassembly_report, decompiled_source, vulnerability_details, unpacked_payload, deobfuscated_code, protocol_specs, nday_root_cause, ioc_list]
+references:
+  - references/static-triage-decompilation.md
+  - references/dynamic-instrumentation.md
+  - references/anti-reversing-bypass.md
+  - references/deobfuscation.md
+  - references/firmware-uefi.md
+  - references/patch-diffing-protocol.md
+scripts:
+  - scripts/triage.py
+  - scripts/frida_universal.js
+  - scripts/antidebug_unhook.py
+  - scripts/string_decrypt_emu.py
+  - scripts/deflatten_triton.py
+  - scripts/uefi_triage.py
+  - scripts/patchdiff_fetch.py
+  - scripts/proto_infer.py
 ---
 
 # Reverse Engineering
 
 ## When to Activate
 
-- Analyzing compiled binaries for vulnerabilities
-- Understanding proprietary protocols or file formats
-- Malware analysis and unpacking
-- Firmware extraction and analysis
-- Bypassing anti-debugging/anti-tampering protections
-- CTF binary challenges
-- Patch diffing to find 1-day vulnerabilities
+- Triaging an unknown compiled binary (ELF/PE/Mach-O) or stripped/obfuscated sample for vulns or capability.
+- Decompiling proprietary code and recovering structure/types (incl. AI/MCP-assisted Ghidra/Binary Ninja).
+- Unpacking & devirtualizing protected binaries (VMProtect 3.x, Themida, OLLVM control-flow flattening).
+- Defeating anti-debugging / anti-VM / anti-Frida so dynamic analysis can proceed.
+- Firmware extraction & UEFI/BIOS RE, Secure Boot bypass research, persistent pre-OS implant analysis.
+- Patch diffing a Patch-Tuesday/CVE fix to recover root cause and build an n-day trigger.
+- Reverse engineering an unknown wire protocol or proprietary file format for fuzzing/parsing.
 
-## Static Analysis
+## Technique Map
 
-### Initial Triage
-```bash
-# File identification
-file target_binary
-rabin2 -I target_binary  # binary info (arch, bits, endian, protections)
+| Technique | ATT&CK | CWE | Reference | Script |
+|-----------|--------|-----|-----------|--------|
+| Binary triage (format/arch/mitigations/strings/imports) | T1592.002, T1518.001 | CWE-1395 | references/static-triage-decompilation.md | scripts/triage.py |
+| Headless decompilation (Ghidra 11.4 / r2 / IDA) | T1592.002 | CWE-noinfo | references/static-triage-decompilation.md | scripts/triage.py |
+| AI/MCP-assisted RE (Sidekick / GhidrAssistMCP / LLM4Decompile) | T1592.002 | CWE-noinfo | references/static-triage-decompilation.md | - |
+| Dynamic debugging (GDB/GEF, x64dbg, conditional bps) | T1622 | CWE-noinfo | references/dynamic-instrumentation.md | - |
+| Frida 17 instrumentation + SSL-pin/JNI hooking | T1622, T1562.001 | CWE-noinfo | references/dynamic-instrumentation.md | scripts/frida_universal.js |
+| Symbolic / concolic execution (angr, Triton) | T1480.001 | CWE-noinfo | references/dynamic-instrumentation.md | scripts/deflatten_triton.py |
+| Anti-debug detection & bypass (PEB/ptrace/HW-bp/timing) | T1622, T1497.001 | CWE-noinfo | references/anti-reversing-bypass.md | scripts/antidebug_unhook.py |
+| Anti-VM / sandbox-evasion neutralization | T1497, T1497.003 | CWE-noinfo | references/anti-reversing-bypass.md | scripts/antidebug_unhook.py |
+| Packer unpack → OEP dump (UPX/runtime packers) | T1027.002, T1620 | CWE-noinfo | references/anti-reversing-bypass.md | scripts/antidebug_unhook.py |
+| String / API-hash deobfuscation (Unicorn emulation) | T1027.013, T1140, T1027.007 | CWE-noinfo | references/deobfuscation.md | scripts/string_decrypt_emu.py |
+| OLLVM control-flow-flattening de-flattening | T1027.009, T1027 | CWE-noinfo | references/deobfuscation.md | scripts/deflatten_triton.py |
+| VM-protector devirtualization (VMProtect 3.x / Themida) | T1027.009 | CWE-noinfo | references/deobfuscation.md | scripts/deflatten_triton.py |
+| Firmware extraction (binwalk/squashfs/QEMU emulation) | T1542.001 | CWE-1263 | references/firmware-uefi.md | scripts/uefi_triage.py |
+| UEFI/BIOS RE + Secure Boot bypass research | T1542.001, T1542.003 | CWE-347 | references/firmware-uefi.md | scripts/uefi_triage.py |
+| Patch diffing → n-day root cause (BinDiff/Diaphora/ghidriff) | T1203, T1592.002 | CWE-noinfo | references/patch-diffing-protocol.md | scripts/patchdiff_fetch.py |
+| Protocol / file-format inference (Netzob/Kaitai) | T1592.002 | CWE-noinfo | references/patch-diffing-protocol.md | scripts/proto_infer.py |
 
-# Strings extraction
-strings -n 8 target_binary | grep -iE '(password|key|secret|flag|http|/bin)'
-rabin2 -z target_binary   # strings with addresses
-rabin2 -zz target_binary  # all strings including wide
-
-# Imports/Exports
-rabin2 -i target_binary   # imports
-rabin2 -E target_binary   # exports
-objdump -T target_binary  # dynamic symbols
-
-# Security mitigations
-checksec --file=target_binary
-# RELRO, Stack Canary, NX, PIE, FORTIFY
-```
-
-### Disassembly & Decompilation
-```bash
-# Ghidra headless analysis
-analyzeHeadless /tmp/ghidra_project proj -import target_binary \
-  -postScript ExportDecompilation.java -scriptPath /scripts/
-
-# radare2 analysis
-r2 -A target_binary
-> afl          # list functions
-> axt @sym.target_func  # xrefs to function
-> pdf @main    # disassemble function
-> VV @main     # visual graph mode
-> afn new_name @addr  # rename function
-
-# IDA (via MCP or IDAPython)
-# Decompile function, rename variables, set types
-# Cross-references: xrefs_to(addr), xrefs_from(addr)
-```
-
-### Pattern Recognition
-```
-# Common vulnerability patterns in disassembly:
-# - strcpy/sprintf without bounds → buffer overflow
-# - malloc(user_controlled_size) → integer overflow
-# - free() followed by use → UAF
-# - system()/exec() with user data → command injection
-# - Custom crypto (XOR loops, fixed keys) → weak encryption
-```
-
-## Dynamic Analysis
-
-### Debugging
-```bash
-# GDB with pwndbg/GEF
-gdb -q ./target
-> break *main
-> run
-> vmmap              # memory layout
-> heap              # heap state
-> telescope $rsp 20 # stack inspection
-> search-pattern "AAAA"  # find pattern in memory
-
-# Conditional breakpoints
-> break *0x401234 if $rax == 0x41414141
-> commands
->   x/s $rdi
->   continue
-> end
-
-# Anti-debug bypass
-> catch syscall ptrace
-> commands
->   set $rax = 0
->   continue
-> end
-```
-
-### Frida Instrumentation
-```javascript
-// Hook function and modify behavior
-Interceptor.attach(Module.findExportByName(null, "strcmp"), {
-    onEnter: function(args) {
-        console.log("strcmp(" + args[0].readUtf8String() + ", " + args[1].readUtf8String() + ")");
-    },
-    onLeave: function(retval) {
-        retval.replace(0); // force match
-    }
-});
-
-// Bypass SSL pinning (Android)
-Java.perform(function() {
-    var TrustManager = Java.use('com.android.org.conscrypt.TrustManagerImpl');
-    TrustManager.verifyChain.implementation = function() {
-        return arguments[0];
-    };
-});
-
-// Trace all JNI calls
-Java.perform(function() {
-    var System = Java.use('java.lang.System');
-    System.loadLibrary.implementation = function(lib) {
-        console.log("Loading: " + lib);
-        this.loadLibrary(lib);
-    };
-});
-```
-
-### Symbolic Execution
-```python
-import angr, claripy
-
-proj = angr.Project('./target', auto_load_libs=False)
-state = proj.factory.entry_state()
-
-# Symbolic input
-sym_input = claripy.BVS('input', 8 * 32)
-state.memory.store(input_addr, sym_input)
-
-# Explore to find path to target
-simgr = proj.factory.simulation_manager(state)
-simgr.explore(find=target_addr, avoid=avoid_addrs)
-
-if simgr.found:
-    solution = simgr.found[0].solver.eval(sym_input, cast_to=bytes)
-    print(f"Input: {solution}")
-```
-
-## Firmware Analysis
+## Quick Start
 
 ```bash
-# Extraction
-binwalk -e firmware.bin
-# Filesystem extraction
-binwalk --dd='.*' firmware.bin
-unsquashfs squashfs-root.img
+# 0. Triage: format, arch, mitigations, packer entropy, strings, imports, capabilities → JSON
+python3 scripts/triage.py ./sample -o out/triage.json
 
-# Identify architecture
-file extracted_binary
-readelf -h extracted_binary
+# 1. Headless decompile to C (Ghidra 11.4 analyzeHeadless wrapper inside triage.py --decompile)
+python3 scripts/triage.py ./sample --decompile --ghidra "$GHIDRA_HOME" -o out/
 
-# Emulation
-qemu-system-arm -M versatilepb -kernel zImage -dtb vexpress.dtb -drive file=rootfs.img
+# 2. If packed/protected → defeat anti-debug, dump OEP (run under x64dbg+ScyllaHide on Windows)
+python3 scripts/antidebug_unhook.py --scan ./sample      # enumerate anti-debug primitives first
 
-# Common targets in firmware:
-# - /etc/shadow, /etc/passwd (hardcoded creds)
-# - Web server configs (lighttpd, uhttpd)
-# - init scripts (startup services)
-# - Proprietary binaries (custom protocols)
-# - Certificate/key files
+# 3. Dynamic: attach Frida (Android/Linux/Win), universal SSL-unpin + native trace
+frida -U -f com.target.app -l scripts/frida_universal.js --no-pause
+
+# 4. Deobfuscate: emulate string decryptor over all xrefs; de-flatten OLLVM with Triton
+python3 scripts/string_decrypt_emu.py ./sample --func 0x401500 --auto-xref -o out/strings.txt
+python3 scripts/deflatten_triton.py ./sample --func 0x401abc -o out/cfg.dot
+
+# 5. Firmware: carve + identify + map UEFI DXE/PEI attack surface, scan for PKfail/known hashes
+python3 scripts/uefi_triage.py firmware.bin -o out/fw/
+
+# 6. n-day: fetch pre/post-patch Windows binary from winbindex and diff
+python3 scripts/patchdiff_fetch.py --pe afd.sys --kb-after KB5050000 -o out/diff/
+
+# 7. Unknown protocol: infer fields/state machine from a pcap, emit Kaitai + Wireshark dissector
+python3 scripts/proto_infer.py capture.pcap --port 4444 -o out/proto/
 ```
 
-## Anti-Reversing Bypass
+## OPSEC & Detection (summary)
 
-| Technique | Bypass |
-|-----------|--------|
-| IsDebuggerPresent | Patch return value, hook API |
-| ptrace(PTRACE_TRACEME) | LD_PRELOAD hook, patch syscall |
-| Timing checks (rdtsc) | Patch comparison, single-step with HW breakpoints |
-| Self-modifying code | Dump after unpacking, trace execution |
-| VM detection | Patch CPUID, hide VM artifacts |
-| Obfuscation (OLLVM) | Symbolic execution, pattern matching, devirtualization |
-| Packed binaries | Run until OEP, dump from memory |
-| Anti-disassembly | Fix control flow, NOP junk bytes |
+| Technique | Telemetry / IOC | Detection (Sigma/EDR) | OPSEC note |
+|-----------|-----------------|------------------------|------------|
+| Static triage / decompile | None (offline on analyst box) | N/A — runs in lab | Analyze copies in an isolated, snapshotted VM; never on the target |
+| Frida / dynamic hooking | `frida-agent.so` in `/proc/self/maps`, port 27042, `gum-js-loop`/`gmain` threads, `ptrace` on target | App-side RASP (Talsec/DeepID), frida-string scans, EDR userland hook tripwires | Rename agent, use gadget+`-l` script mode, embed gadget in APK to dodge port checks |
+| Anti-debug bypass | Debug registers DR0-7 set, PEB.BeingDebugged flips, hooked Nt* prologues | Self-integrity checks, KiUserExceptionDispatcher checks, TitanHide-vs-malware arms race | Prefer kernel TitanHide/HyperHide for hardened packers; snapshot before each run |
+| Packer/OEP dump | New RWX region, IAT rebuild, written `dump.exe` on disk | EDR RWX-alloc + tail-jump heuristics (lab only) | All in lab; dumped sample is for analysis, not redeployment |
+| String/API-hash decrypt (Unicorn) | None on target (offline emulation) | N/A | Pure offline; safe — no sample execution of network/FS code |
+| Firmware / SPI flash dump | Hardware: chip-clip on SPI; software: `chipsec`/`flashrom` reads | Boot Guard / measured boot (TPM PCRs), Binarly/CHIPSEC verifiers | Physical/authorized only; flashing back a modded image is destructive & loud |
+| Secure Boot bypass research | New unsigned bootloader in ESP, MokList/dbx anomalies, unexpected `bootmgfw` hash | Measured boot PCR[0/2/4/7] drift, `dbx` revocation checks, ESET/Binarly scanners | Lab VMs / disposable hardware; document, never persist a real implant |
+| Patch diffing | None on target (fetches public binaries) | N/A | Public Microsoft/distro binaries; n-day PoC stays in lab until disclosure/ROE |
+| Protocol inference | Replays captured/crafted packets at the service | IDS on malformed/replayed frames; rate anomalies | Throttle active probes; prefer passive pcap when a live target is in scope |
 
-## Patch Diffing (1-day Research)
+## Deep Dives
 
-```bash
-# BinDiff / Diaphora workflow:
-# 1. Get vulnerable version and patched version
-# 2. Generate IDB/BinExport for both
-# 3. Diff — focus on changed functions
-# 4. Analyze what was fixed → understand the vulnerability
-# 5. Write exploit for the pre-patch version
-
-# Key indicators in patches:
-# - Added bounds checks → buffer overflow
-# - Added NULL checks → null deref / UAF
-# - Changed comparison logic → auth bypass
-# - Added sanitization → injection
-# - Changed allocation size → heap overflow
-```
-
-## Advanced: Firmware Analysis (UEFI/BIOS)
-
-### UEFI Extraction & Analysis
-```bash
-# Extract UEFI firmware
-UEFIExtract firmware.bin  # Extracts all volumes, sections, files
-# Or: uefi-firmware-parser -e firmware.bin
-
-# Identify DXE drivers (most attack surface)
-# DXE drivers run with full hardware access before OS loads
-# Vulnerable DXE driver = persistent pre-OS implant
-
-# Common UEFI vulnerability classes:
-# - SMM (System Management Mode) callout → ring -2 code execution
-# - DXE driver buffer overflow → persistent implant
-# - Secure Boot bypass → load unsigned bootloader
-# - Variable overflow (NVRAM) → code execution in PEI/DXE phase
-
-# Analyze with Ghidra:
-# Load as PE/TE binary, set base address from volume header
-# Look for: EFI_BOOT_SERVICES, EFI_RUNTIME_SERVICES calls
-# Focus on: SMI handlers (SW SMI dispatch), variable access
-```
-
-### Secure Boot Bypass Research
-```bash
-# Secure Boot chain: UEFI → shim → GRUB → kernel
-# Attack points:
-# 1. Vulnerable signed bootloader (BlackLotus technique)
-#    - Find old signed bootloader with known vulnerability
-#    - Not yet revoked in DBX (Secure Boot blacklist)
-#    - Use it to load unsigned code
-
-# 2. GRUB vulnerabilities (BootHole, CVE-2020-10713)
-#    - Buffer overflow in GRUB config parsing
-#    - Craft malicious grub.cfg → code execution before kernel
-
-# 3. Shim vulnerabilities
-#    - Bypass signature verification in shim loader
-#    - Load arbitrary EFI binary
-
-# Check revocation status:
-# Parse DBX (Forbidden Signatures Database) from NVRAM
-# Compare against known-vulnerable bootloader hashes
-```
-
-## Advanced: De-obfuscation Techniques
-
-### Control Flow Flattening (OLLVM)
-```python
-# OLLVM flattens control flow into a switch-based dispatcher:
-# Original: if/else/loops → Flattened: while(1) { switch(state) { ... } }
-# 
-# De-flattening approach:
-# 1. Identify dispatcher (switch variable, state assignments)
-# 2. Trace state transitions for each case
-# 3. Reconstruct original control flow graph
-# 4. Tools: D-810 (IDA plugin), SATURN, deflat.py
-
-# Symbolic execution for de-obfuscation:
-import angr
-
-def deobfuscate_cfg(binary, func_addr):
-    proj = angr.Project(binary, auto_load_libs=False)
-    cfg = proj.analyses.CFGFast()
-    func = cfg.functions[func_addr]
-    
-    # Identify dispatcher block (highest in-degree)
-    dispatcher = max(func.blocks, key=lambda b: len(list(func.graph.predecessors(b))))
-    
-    # For each state value, trace execution to find real successor
-    # Build de-obfuscated CFG from state transitions
-```
-
-### String Deobfuscation (Automated)
-```python
-# Common patterns:
-# 1. XOR with key: for(i=0;i<len;i++) str[i] ^= key[i%keylen]
-# 2. Stack strings: mov [rsp+0], 'H'; mov [rsp+1], 'e'; ...
-# 3. RC4/AES encrypted strings decrypted at runtime
-# 4. API hashing: hash(api_name) compared against constants
-
-# Automated decryption with emulation:
-from unicorn import *
-from unicorn.x86_const import *
-
-def emulate_decrypt(binary, func_addr, encrypted_data):
-    mu = Uc(UC_ARCH_X86, UC_MODE_64)
-    # Map code and data
-    mu.mem_map(0x400000, 0x10000)
-    mu.mem_write(0x400000, binary_code)
-    # Map stack
-    mu.mem_map(0x7f0000, 0x10000)
-    mu.reg_write(UC_X86_REG_RSP, 0x7f8000)
-    # Set up arguments (encrypted data pointer)
-    mu.mem_map(0x600000, 0x1000)
-    mu.mem_write(0x600000, encrypted_data)
-    mu.reg_write(UC_X86_REG_RDI, 0x600000)
-    # Emulate decryption function
-    mu.emu_start(func_addr, func_addr + func_size)
-    # Read decrypted result
-    return mu.mem_read(0x600000, len(encrypted_data))
-
-# IDAPython batch decryption:
-# Find all xrefs to decrypt function → emulate each → add comments
-```
-
-### VM-Based Obfuscation (Themida/VMProtect)
-```
-# VM protectors convert native code to custom bytecode
-# Custom interpreter executes bytecode at runtime
-# Each protected binary has UNIQUE instruction set
-
-# Analysis approach:
-# 1. Identify VM entry point (push regs, setup VM context)
-# 2. Identify VM dispatcher (fetch-decode-execute loop)
-# 3. Map virtual opcodes to operations:
-#    - Trace handler addresses for each opcode
-#    - Classify: arithmetic, memory, control flow, stack
-# 4. Build lifter: VM bytecode → intermediate representation
-# 5. Optimize IR → recover original logic
-
-# Tools:
-# - VMP analysis: NoVmp, VMPAttack
-# - Themida: Oreans UnVirtualizer
-# - Generic: Triton (symbolic execution on VM handlers)
-# - Manual: trace with x64dbg, log handler dispatches
-```
-
-## Advanced: Binary Diffing for 1-Day Development
-
-### Systematic Patch Analysis
-```bash
-# 1. Obtain pre-patch and post-patch binaries
-# Windows: download from Microsoft Update Catalog
-# Linux: apt/yum cache or snapshot.debian.org
-
-# 2. Generate function-level diff
-# BinDiff: Export BinExport from IDA → BinDiff GUI
-# Diaphora: IDA plugin, generates SQLite DB for comparison
-
-# 3. Focus on changed functions:
-# - Small changes (1-5 basic blocks modified) → likely the fix
-# - Added bounds checks → buffer overflow
-# - Added NULL checks → null deref / UAF
-# - Changed comparison → logic bug / auth bypass
-# - Added lock/mutex → race condition
-
-# 4. Root cause analysis:
-# What was the vulnerable code doing?
-# What input reaches this code?
-# What's the minimum trigger condition?
-
-# 5. Exploit development:
-# Craft input that triggers the pre-patch vulnerable path
-# Verify on unpatched version
-# Assess: is it reachable remotely? What privileges needed?
-```
-
-### Windows Patch Tuesday Analysis
-```bash
-# Monthly workflow:
-# 1. Download advisory details (MSRC)
-# 2. Identify interesting CVEs (RCE, EoP in common components)
-# 3. Download patched DLL/SYS from Update Catalog
-# 4. Get pre-patch version from previous month's update
-# 5. BinDiff the specific component
-# 6. Focus on: win32k.sys, ntoskrnl.exe, HTTP.sys, Exchange, RPC runtime
-
-# Automation:
-# winbindex.m417z.com — index of Windows binaries by version
-# Download specific versions of any Windows DLL
-```
-
-## Advanced: Protocol Reverse Engineering
-
-### Network Protocol RE
-```python
-# Methodology:
-# 1. Capture traffic (Wireshark/tcpdump)
-# 2. Identify message boundaries (length prefix, delimiter, fixed size)
-# 3. Classify message types (request/response, different commands)
-# 4. Map fields: header, type, length, payload, checksum
-# 5. Identify encoding: raw binary, protobuf, msgpack, custom
-
-# Wireshark dissector (Lua) for custom protocol:
-local proto = Proto("custom", "Custom Protocol")
-local f_type = ProtoField.uint8("custom.type", "Message Type")
-local f_len = ProtoField.uint16("custom.len", "Payload Length")
-local f_data = ProtoField.bytes("custom.data", "Payload")
-proto.fields = {f_type, f_len, f_data}
-
-function proto.dissector(buffer, pinfo, tree)
-    local subtree = tree:add(proto, buffer())
-    subtree:add(f_type, buffer(0,1))
-    subtree:add(f_len, buffer(1,2))
-    local payload_len = buffer(1,2):uint()
-    subtree:add(f_data, buffer(3, payload_len))
-end
-
-local tcp_table = DissectorTable.get("tcp.port")
-tcp_table:add(4444, proto)
-```
-
-### Proprietary File Format RE
-```python
-# Approach:
-# 1. Collect multiple samples of the format
-# 2. Hex diff samples → identify fixed vs variable regions
-# 3. Identify magic bytes (file signature)
-# 4. Map structure: header → sections → data
-# 5. Cross-reference with binary that parses the format
-
-# 010 Editor template / Kaitai Struct for documentation:
-# Define format as structured grammar
-# Enables automated parsing and fuzzing
-
-# Fuzzing the parser:
-# Once format is understood → mutate valid files
-# Target: length fields (overflow), count fields (OOB), offsets (arbitrary read)
-```
+- references/static-triage-decompilation.md — File/arch/mitigation triage, entropy & packer ID, capability detection (capa), Ghidra 11.4 `analyzeHeadless` + PyGhidra, r2/rizin & IDA decompile flows, and the 2025 AI/MCP-assisted layer (Binary Ninja Sidekick, GhidrAssistMCP, LLM4Decompile / SK²Decompile) with verification discipline.
+- references/dynamic-instrumentation.md — GDB/GEF & x64dbg workflows, conditional/commands breakpoints, Frida 17 internals (Interceptor/Stalker/Java), universal SSL-unpin + JNI tracing, and angr/Triton symbolic + concolic execution with backward slicing for path/value recovery.
+- references/anti-reversing-bypass.md — Anti-debug taxonomy (PEB flags, NtSetInformationThread/ThreadHideFromDebugger, DR0-7 / GetThreadContext, KiUserExceptionDispatcher, NtClose, INT 2D, rdtsc timing, Linux ptrace/TracerPid), anti-VM/al-khaser, ScyllaHide/TitanHide, and runtime-packer OEP dumping.
+- references/deobfuscation.md — String & API-hash decryption via Unicorn emulation, OLLVM control-flow-flattening de-flattening (dispatcher recovery, Triton backward slicing à la LummaC2), MBA simplification, and VM-protector devirtualization (NoVmp/VTIL, Titan, Triton lifting) for VMProtect 3.x / Themida.
+- references/firmware-uefi.md — binwalk/unblob carving, squashfs/JFFS2 extraction, QEMU+afl emulation, UEFI volume/DXE/PEI parsing (UEFITool/chipsec), SMM callout & NVRAM variable surface, and Secure Boot bypass research with the verified 2024-2025 chain: LogoFAIL (CVE-2023-40238), PKfail (CVE-2024-8105), CVE-2024-7344, BlackLotus/Bootkitty context.
+- references/patch-diffing-protocol.md — winbindex binary acquisition, MSU/CAB extraction, BinDiff/Diaphora/ghidriff function-level diffing, LLM-assisted triage (PatchWatch/DiffRays) with hallucination caveats, late-2025 kernel targets (cldflt.sys, win32k, CLFS), plus network/file-format protocol RE (Netzob, Kaitai Struct, BinPRE-style field inference).
