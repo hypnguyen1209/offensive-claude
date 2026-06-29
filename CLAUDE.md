@@ -53,6 +53,16 @@ Skills are loaded from `./skills/` directory:
 | 23 | mobile-pentest | Android/iOS Offensive Testing |
 | 24 | advanced-redteam | Advanced OPSEC, C2 Infra, Staged Payloads |
 | 25 | active-directory-attack | AD Exploitation, Kerberos, NTLM Relay, Domain Dominance |
+| 26 | cicd-supply-chain | CI/CD Pipeline Poisoning & Supply-Chain Attacks |
+| 27 | ai-agent-redteam | Agentic AI / LLM Application Red Teaming |
+| 28 | container-k8s-escape | Container Breakout & Kubernetes Escape |
+| 29 | browser-exploitation | Browser & Client-Side Exploitation (V8, Electron) |
+| 30 | macos-offensive | macOS Offensive — TCC/Gatekeeper/Keychain *(planned)* |
+
+> **Skill architecture:** skills use a progressive-disclosure layout — a thin `SKILL.md` router
+> plus per-skill `references/` (technique deep-dives) and `scripts/` (runnable tooling). Each technique
+> carries a technique-level ATT&CK ID, a CWE, and a Sigma/EDR detection + OPSEC note. (Migration in
+> progress; `macos-offensive` and a few weaponization-heavy skills are pending.)
 
 ## Agents Available
 
@@ -151,6 +161,11 @@ Skills are loaded from `./skills/` directory:
 | 23 | mobile-pentest | Android/iOS Offensive Testing | 1,4 (Recon, Exploit) |
 | 24 | advanced-redteam | Advanced OPSEC, C2 Infra | 6,7 (C2, Actions) |
 | 25 | active-directory-attack | AD Exploitation, Kerberos | 4,7 (Exploit, Actions) |
+| 26 | cicd-supply-chain | CI/CD Pipeline Poisoning & Supply-Chain | 2,3 (Weaponize, Delivery) |
+| 27 | ai-agent-redteam | Agentic AI / LLM App Red Teaming | 3,4 (Delivery, Exploit) |
+| 28 | container-k8s-escape | Container Breakout & Kubernetes Escape | 4,7 (Exploit, Actions) |
+| 29 | browser-exploitation | Browser & Client-Side Exploitation | 2,4 (Weaponize, Exploit) |
+| 30 | macos-offensive | macOS Offensive (TCC/Gatekeeper/Keychain) *(planned)* | 4,5 (Exploit, Install) |
 
 ## Agents Available
 

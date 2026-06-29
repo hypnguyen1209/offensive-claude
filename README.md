@@ -1,6 +1,6 @@
 # Offensive Security Research Config for Claude Code
 
-A spec-driven offensive security framework for Claude Code — structured engagement workflows based on the Cyber Kill Chain, 25 specialized skills, 6 collaborative agents, and 47 vulnerability reference files. Inspired by [GitHub's spec-kit](https://github.com/github/spec-kit) methodology.
+A spec-driven offensive security framework for Claude Code — structured engagement workflows based on the Cyber Kill Chain, 30 specialized skills (multi-file progressive-disclosure), 6 collaborative agents, and a shared 47-file vulnerability reference library. Inspired by [GitHub's spec-kit](https://github.com/github/spec-kit) methodology.
 
 ## Quick Setup
 
@@ -91,11 +91,14 @@ Each phase transition validates:
 
 ```
 .
-├── skills/                        # 25 skill modules (SKILL.md per directory)
+├── skills/                        # 30 skill modules (progressive-disclosure layout)
 │   ├── recon-osint/
+│   │   ├── SKILL.md               #   thin router: when-to-activate + technique map + OPSEC/detection
+│   │   ├── references/            #   per-skill technique deep-dives (theory + code + detection + OPSEC)
+│   │   └── scripts/               #   runnable tooling backing each technique
 │   ├── exploit-development/
 │   ├── ...
-│   └── references/                # 47 vulnerability pattern files
+│   └── references/                # shared 47-file vulnerability pattern library
 ├── agents/                        # 6 collaborative sub-agents
 ├── templates/                     # Structured templates per Kill Chain phase
 │   ├── scope/                     #   Phase 0: scope-definition, emergency-contact
@@ -120,7 +123,12 @@ Each phase transition validates:
 └── README.md
 ```
 
-## Skills (25)
+## Skills (30)
+
+Each skill is a progressive-disclosure module: a thin `SKILL.md` router (when-to-activate, a technique
+map of *technique → ATT&CK ID → CWE → reference → script*, and an OPSEC/detection summary), backed by
+per-skill `references/` deep-dives and runnable `scripts/`. Every technique pairs the offensive path with
+a Sigma/EDR detection signature and OPSEC notes, and cites current (2024–2026) CVEs/techniques.
 
 | # | Skill | Kill Chain | Coverage |
 |---|-------|-----------|----------|
@@ -149,6 +157,11 @@ Each phase transition validates:
 | 23 | mobile-pentest | Recon, Exploit | Android/iOS, Frida, SSL pinning bypass, exported components, biometric bypass |
 | 24 | advanced-redteam | C2, Actions | C2 infra (redirectors, malleable profiles), OPSEC, tiered infrastructure |
 | 25 | active-directory-attack | Exploit, Actions | Kerberoasting, NTLM relay, Golden/Silver Ticket, ADCS, delegation abuse |
+| 26 | cicd-supply-chain | Weaponize, Delivery | Pipeline poisoning (Actions/GitLab/Jenkins), dependency confusion, OIDC abuse, SLSA/provenance |
+| 27 | ai-agent-redteam | Delivery, Exploit | Agentic AI/MCP tool abuse, indirect prompt-injection chains, RAG/memory poisoning, jailbreaks |
+| 28 | container-k8s-escape | Exploit, Actions | Container breakout, runc CVEs, K8s RBAC escalation, admission/ingress attacks, node pivot |
+| 29 | browser-exploitation | Weaponize, Exploit | V8/JSC JIT type confusion, heap-sandbox & renderer→browser escape, Electron/IPC RCE |
+| 30 | macos-offensive | Exploit, Install | TCC/Gatekeeper bypass, keychain, LaunchAgent persistence, ESF evasion *(planned)* |
 
 ## Agents (6)
 
