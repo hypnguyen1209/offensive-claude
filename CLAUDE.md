@@ -183,8 +183,19 @@ Agents are loaded from `./agents/` directory:
 ## Output Standards
 
 - Findings include: severity, CWE, CVSS, exploitation path, PoC, evidence, ATT&CK mapping, remediation
+- **Tag every finding with a confidence tier:** `[CONFIRMED]` (impact demonstrated + grounded in evidence), `[POSSIBLE]` (reachable but class bar not yet met), or `[INFO]` (no impact at current severity). Never present a `[POSSIBLE]` as confirmed.
+- **Evidence bar by class is mandatory** — a status code is not impact. SSRF needs an internal response; IDOR needs another principal's data; RCE needs command output; XSS needs script execution. See `skills/references/finding-evidence-standards.md` and `finding-validation-runtime.md`.
 - Code is complete, tested, and production-quality
 - Commands include exact syntax with all required flags
 - Network operations specify protocols, ports, and expected responses
 - Always note OPSEC considerations for offensive operations
 - Finding records use structured templates from `templates/exploit/findings/`
+
+## Safety & Trust Tooling
+
+This is offensive tooling for **authorized** engagements (see [`TERMS.md`](TERMS.md)). Safety controls are executable, not prose:
+
+- **Scope is enforced.** Phase 0 emits `.engage/scope/scope.json` (schema: `templates/scope/scope.schema.json`); every active script confirms a target is in-scope via `skills/coding-mastery/scripts/_lib/scope_guard.py` before touching it. Bash scripts source `skills/coding-mastery/scripts/lib.sh` and call `_in_scope`.
+- **Findings are validated.** `skills/vulnerability-analysis/scripts/validate_findings.py` rejects ungrounded findings and per-class false positives; `/engage.gate` runs it.
+- **Secrets never hit logs.** Build auth headers with `skills/coding-mastery/scripts/_lib/http_creds.py` (`Cred.from_env(...).as_headers()`) — tokens come from the environment and are masked in repr/logs. Do not hard-code or `.env`-store credentials.
+- **Tests gate changes.** Safety-critical scripts are covered by `tests/` (run `pytest`); CI runs them on push (`.github/workflows/tests.yml`).

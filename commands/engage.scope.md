@@ -56,17 +56,36 @@ Works with you to populate:
 - Engagement end date
 - Reporting deadline
 
-### 3. Validation
-Checks that all required fields are populated with substantive content.
+### 3. Emit machine-readable scope (`scope.json`)
+Translate the in-scope / out-of-scope boundaries into `.engage/scope/scope.json` following
+`templates/scope/scope.schema.json` (see `templates/scope/scope.example.json`). This file is
+the **enforced** boundary — every active script consults it via `scope_guard.py`, so "stay in
+scope" stops being a promise and becomes a check.
 
-### 4. Gate Check
+```bash
+mkdir -p .engage/scope
+# ...write scope.json with engagement, authorization_ref, in_scope[], out_of_scope[], roe{}...
+# Sanity-check it loads and that a known in-scope target classifies correctly:
+python skills/coding-mastery/scripts/_lib/scope_guard.py check api.acme.com \
+    --scope .engage/scope/scope.json
+```
+
+Remember: `*.acme.com` matches sub-domains only — list the apex `acme.com` separately;
+`out_of_scope` always wins.
+
+### 4. Validation
+Checks that all required fields are populated with substantive content, and that
+`scope.json` loads without error.
+
+### 5. Gate Check
 Runs `/engage.gate` automatically to validate:
 - All sections complete
+- `scope.json` present and valid
 - Authorization documented
 - ROE clearly defined
 - Contacts provided
 
-### 5. Next Steps
+### 6. Next Steps
 If gate passes, suggests: `/engage.recon`
 
 ## Example Interaction

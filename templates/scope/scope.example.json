@@ -1,0 +1,24 @@
+{
+  "engagement": "ACME-2026-Q2",
+  "authorization_ref": "SOW-2026-0042 signed 2026-06-01 by CISO Jane Roe",
+  "in_scope": [
+    "acme.com",
+    "*.acme.com",
+    "https://api.acme.com",
+    "203.0.113.0/24",
+    "198.51.100.7"
+  ],
+  "out_of_scope": [
+    "*.internal.acme.com",
+    "dev.acme.com",
+    "203.0.113.13",
+    "blog.acme.com"
+  ],
+  "max_cidr_hosts": 1024,
+  "roe": {
+    "allow_mutating_methods": false,
+    "rate_limit_rps": 10,
+    "testing_window": "Mon-Fri 09:00-17:00 America/New_York",
+    "dos_permitted": false
+  }
+}

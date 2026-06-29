@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/hypnguyen1209/offensive-claude/templates/scope/scope.schema.json",
+  "title": "Engagement Scope",
+  "description": "Machine-readable allowlist emitted by /engage.scope and enforced by scope_guard.py. Wildcards (\"*.example.com\") match sub-domains only — list the apex separately. out_of_scope always wins over in_scope.",
+  "type": "object",
+  "required": ["engagement", "in_scope"],
+  "additionalProperties": false,
+  "properties": {
+    "engagement": {
+      "type": "string",
+      "description": "Engagement identifier, e.g. ACME-2026-Q2."
+    },
+    "authorization_ref": {
+      "type": "string",
+      "description": "Reference to the signed authorization (letter/email/ticket id)."
+    },
+    "in_scope": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Allowed assets. Each entry is a domain, *.wildcard, IP, CIDR, or URL.",
+      "items": { "type": "string" }
+    },
+    "out_of_scope": {
+      "type": "array",
+      "description": "Explicitly forbidden assets (takes precedence over in_scope).",
+      "items": { "type": "string" }
+    },
+    "max_cidr_hosts": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1024,
+      "description": "Refuse to expand a CIDR larger than this many hosts without an explicit override."
+    },
+    "roe": {
+      "type": "object",
+      "description": "Optional rules-of-engagement flags consumed by tooling.",
+      "additionalProperties": false,
+      "properties": {
+        "allow_mutating_methods": { "type": "boolean", "default": false },
+        "rate_limit_rps": { "type": "number" },
+        "testing_window": { "type": "string" },
+        "dos_permitted": { "type": "boolean", "default": false }
+      }
+    }
+  }
+}

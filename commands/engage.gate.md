@@ -14,6 +14,26 @@ If no phase specified, validates the current active phase.
 
 ## Validation Checks
 
+### Automated Enforcement (run these, don't just eyeball)
+
+These executable checks back the gate — a phase cannot pass if they fail:
+
+```bash
+# Scope is enforced, not promised: every in-scope target must classify in-scope,
+# and the scope file itself must be valid.
+python skills/coding-mastery/scripts/_lib/scope_guard.py check <target> \
+    --scope .engage/scope/scope.json
+
+# Findings must be grounded in evidence and survive per-class kill-signals.
+# Exit 1 if any finding is REJECTED (ungrounded / false-positive).
+python skills/vulnerability-analysis/scripts/validate_findings.py \
+    --findings .engage/exploit/findings.json --evidence .engage/evidence
+```
+
+A finding only passes the gate if `validate_findings.py` tiers it **CONFIRMED** (or a
+documented **CHAIN-REQUIRED**). `POSSIBLE`/`REJECTED` findings do not advance. See
+`skills/references/finding-validation-runtime.md` and `finding-evidence-standards.md`.
+
 ### Artifact Validation
 - All required template files are populated
 - No placeholder text remains (e.g., "[TODO]", "[FILL IN]")
@@ -22,15 +42,17 @@ If no phase specified, validates the current active phase.
 ### Finding Validation
 For phases that produce findings (recon, exploit, actions):
 - Each finding has: title, severity, CWE/CVE, description, evidence path
-- Evidence files exist at specified paths
-- Findings follow the standard format
+- Evidence files exist at specified paths (enforced by `validate_findings.py` grounding check)
+- Findings follow the standard format and carry a confidence tier: `[CONFIRMED]` / `[POSSIBLE]` / `[INFO]`
+- Per-class exploitability bar met (no self-IDOR, DNS-only SSRF, encoded "XSS", same-origin "redirect", blind "RCE")
 
 ### Phase-Specific Checks
 
 **Phase 0 (Scope)**:
 - Target list defined
+- **`.engage/scope/scope.json` emitted and valid** (loads in `scope_guard.py`; matches `templates/scope/scope.schema.json`)
 - Rules of Engagement documented
-- Authorization evidence present
+- Authorization evidence present (`authorization_ref` set)
 - Emergency contacts listed
 
 **Phase 1 (Recon)**:
