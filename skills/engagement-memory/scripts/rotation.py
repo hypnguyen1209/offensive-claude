@@ -52,20 +52,48 @@ def compact(path: str) -> tuple:
     return (before, len(merged))
 
 
-def rotate_audit(path: str, max_bytes: int = 5_000_000, keep: int = 3) -> bool:
+def maybe_gc(patterns_path: str, audit_path: Optional[str] = None, *,
+             max_records: Optional[int] = None, max_bytes: int = 2_000_000) -> Optional[dict]:
+    """Auto-compact the pattern store when it grows past a threshold. Safe to call after every
+    record because compact() is LOSSLESS (merge, never discard). Only the disposable audit log
+    discard-rotates. Returns a summary dict if it acted, else None."""
+    if max_records is None:
+        try:
+            max_records = int(os.environ.get("ENGAGEMENT_DB_MAX_RECORDS", "5000"))
+        except ValueError:
+            max_records = 5000
+    if not os.path.isfile(patterns_path):
+        return None
+    over = os.path.getsize(patterns_path) > max_bytes
+    if not over:
+        with open(patterns_path, "rb") as fh:
+            over = sum(1 for _ in fh) > max_records
+    if not over:
+        return None
+    before, after = compact(patterns_path)
+    rotated = rotate_audit(audit_path) if audit_path else False
+    return {"compacted": True, "before": before, "after": after, "audit_rotated": rotated}
+
+
+def rotate_audit(path: Optional[str], max_bytes: int = 5_000_000, keep: int = 3) -> bool:
     """Discard-rotate a disposable audit log when it exceeds max_bytes. Returns True if rotated.
-    Keeps `keep` historical files (path.1 .. path.keep); the oldest is discarded."""
-    if not os.path.isfile(path) or os.path.getsize(path) <= max_bytes:
+    Keeps `keep` historical files (path.1 .. path.keep); the oldest is discarded. Writes a
+    retention-gap marker into the fresh log so the loss of disposable history is itself recorded."""
+    if not path or not os.path.isfile(path) or os.path.getsize(path) <= max_bytes:
         return False
     oldest = f"{path}.{keep}"
+    dropped = 0
     if os.path.exists(oldest):
+        with open(oldest, "rb") as fh:
+            dropped = sum(1 for _ in fh)
         os.remove(oldest)
     for i in range(keep - 1, 0, -1):
         src = f"{path}.{i}"
         if os.path.exists(src):
             os.replace(src, f"{path}.{i + 1}")
     os.replace(path, f"{path}.1")
-    open(path, "w", encoding="utf-8").close()
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps(schemas.make_retention_gap("audit rotated", dropped)) + "\n")
     return True
 
 

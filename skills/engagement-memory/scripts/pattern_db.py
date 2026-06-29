@@ -65,11 +65,74 @@ def merged(path: str) -> list:
     return list(by_key.values())
 
 
-def record(pattern: dict, path: str) -> None:
-    schemas.validate_pattern(pattern)
+def _sibling(path: str, name: str) -> str:
+    return os.path.join(os.path.dirname(path) or ".", name)
+
+
+def audit_path(db: str) -> str:
+    """Disposable audit log, a sibling of the pattern store ($ENGAGEMENT_AUDIT overrides)."""
+    return os.environ.get("ENGAGEMENT_AUDIT") or _sibling(db, "audit.jsonl")
+
+
+def profiles_path(db: str) -> str:
+    """target_profile records live in their own file so lossless compaction of patterns.jsonl
+    can never drop them and pattern recall never mixes them in."""
+    return os.environ.get("ENGAGEMENT_PROFILES") or _sibling(db, "profiles.jsonl")
+
+
+def write_audit(rec: dict, path: str) -> None:
+    schemas.validate_audit(rec)
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "a", encoding="utf-8") as fh:
-        fh.write(json.dumps(pattern) + "\n")
+        fh.write(json.dumps(rec) + "\n")
+    rotation.rotate_audit(path)          # cap the disposable log inline
+
+
+def load_profiles(path_or_db: str) -> list:
+    """Read target_profile records from the profiles file (accepts the patterns-db path)."""
+    p = path_or_db if os.path.basename(path_or_db) == "profiles.jsonl" else profiles_path(path_or_db)
+    out = []
+    if not os.path.isfile(p):
+        return out
+    with open(p, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+                schemas.validate_target_profile(rec)
+                out.append(rec)
+            except (ValueError, schemas.SchemaError):
+                continue
+    return out
+
+
+def recall_profile(target: str, db: str):
+    """Newest target_profile for a target (or None)."""
+    tgt = schemas.normalize_target(target)
+    hits = [r for r in load_profiles(db) if r.get("target") == tgt]
+    return max(hits, key=lambda r: float(r.get("ts") or 0)) if hits else None
+
+
+def record(rec: dict, path: str) -> None:
+    """Append a record, routed by type: audit -> audit.jsonl, target_profile -> profiles.jsonl,
+    pattern -> the pattern store (then auto-gc, lossless)."""
+    rtype = rec.get("type")
+    if rtype == "audit":
+        write_audit(rec, audit_path(path))
+        return
+    if rtype == "target_profile":
+        schemas.validate_target_profile(rec)
+        dest = profiles_path(path)
+    else:
+        schemas.validate_pattern(rec)
+        dest = path
+    os.makedirs(os.path.dirname(dest) or ".", exist_ok=True)
+    with open(dest, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(rec) + "\n")
+    if rtype != "target_profile":
+        rotation.maybe_gc(path, audit_path(path))
 
 
 def match(records: list, *, vuln_class: Optional[str] = None, tech_stack=None,
@@ -113,6 +176,15 @@ def _build_record(args) -> dict:
         evidence_ref=args.evidence_ref or "", source=args.source or "")
 
 
+def _emit_audit(db: str, action_class: str, tool: str, *, target=None, outcome="success", note=""):
+    """Best-effort audit line; never let auditing break the underlying operation."""
+    try:
+        write_audit(schemas.make_audit(action_class, tool, target=target, outcome=outcome, note=note),
+                    audit_path(db))
+    except Exception:
+        pass
+
+
 def main(argv: Optional[list] = None) -> int:
     p = argparse.ArgumentParser(description="Cross-engagement pattern memory.")
     p.add_argument("--db", default=None)
@@ -130,8 +202,16 @@ def main(argv: Optional[list] = None) -> int:
     m.add_argument("--vuln-class", dest="vuln_class"); m.add_argument("--tech-stack", dest="tech_stack")
     m.add_argument("--target"); m.add_argument("--top", type=int, default=10); m.add_argument("--json", action="store_true")
 
+    pr = sub.add_parser("profile", help="record a target_profile (durable per-target facts)")
+    pr.add_argument("--target", required=True); pr.add_argument("--tech-stack", dest="tech_stack")
+    pr.add_argument("--endpoints"); pr.add_argument("--notes", default="")
+
+    rp = sub.add_parser("recall-profile"); rp.add_argument("--target", required=True)
+    rp.add_argument("--json", action="store_true")
+
     sub.add_parser("compact")
     sub.add_parser("stats")
+    sub.add_parser("audit-stats")
 
     args = p.parse_args(argv)
     db = args.db or default_db()
@@ -139,12 +219,14 @@ def main(argv: Optional[list] = None) -> int:
         if args.cmd == "record":
             rec = _build_record(args)
             record(rec, db)
+            _emit_audit(db, "write", "record", target=rec.get("target"), note=str(schemas.pattern_key(rec)))
             print(f"recorded {schemas.pattern_key(rec)} (severity={rec['severity']} cvss={rec['cvss']})")
             return 0
         if args.cmd == "match":
             hits = match(merged(db), vuln_class=args.vuln_class,
                          tech_stack=(args.tech_stack.split(",") if args.tech_stack else None),
                          target=args.target, top=args.top)
+            _emit_audit(db, "read", "match", target=args.target, note=f"{len(hits)} hits")
             if args.json:
                 print(json.dumps(hits, indent=2))
             else:
@@ -154,20 +236,63 @@ def main(argv: Optional[list] = None) -> int:
                 if not hits:
                     print("(no prior patterns match)")
             return 0
+        if args.cmd == "profile":
+            rec = schemas.make_target_profile(
+                args.target, tech_stack=(args.tech_stack.split(",") if args.tech_stack else None),
+                endpoints=(args.endpoints.split(",") if args.endpoints else None), notes=args.notes)
+            record(rec, db)
+            _emit_audit(db, "write", "profile", target=rec.get("target"))
+            print(f"recorded target_profile for {rec['target']}")
+            return 0
+        if args.cmd == "recall-profile":
+            prof = recall_profile(args.target, db)
+            print(json.dumps(prof, indent=2) if (args.json or prof) else "(no profile)")
+            return 0
         if args.cmd == "compact":
             before, after = rotation.compact(db)
+            _emit_audit(db, "admin", "compact", note=f"{before}->{after}")
             print(f"compacted {db}: {before} -> {after} records")
             return 0
         if args.cmd == "stats":
             recs = merged(db)
             by_class: dict = {}
-            for r in recs:
-                by_class[r["vuln_class"]] = by_class.get(r["vuln_class"], 0) + 1
-            print(f"db: {db}\npatterns (merged): {len(recs)}")
+            for rec in recs:
+                by_class[rec["vuln_class"]] = by_class.get(rec["vuln_class"], 0) + 1
+            print(f"db: {db}\npatterns (merged): {len(recs)} | profiles: {len(load_profiles(db))}")
             for c, n in sorted(by_class.items(), key=lambda kv: -kv[1]):
                 print(f"  {n:4}  {c}")
             return 0
-    except (ValueError, schemas.SchemaError, OSError) as exc:
+        if args.cmd == "audit-stats":
+            by_tool, by_action, by_outcome = {}, {}, {}
+            total = 0
+            ap = audit_path(db)
+            if os.path.isfile(ap):
+                with open(ap, "r", encoding="utf-8", errors="replace") as fh:
+                    for line in fh:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            ev = json.loads(line)
+                        except ValueError:
+                            continue
+                        if ev.get("type") != "audit":
+                            continue
+                        total += 1
+                        by_tool[ev.get("tool", "?")] = by_tool.get(ev.get("tool", "?"), 0) + 1
+                        by_action[ev.get("action_class", "?")] = by_action.get(ev.get("action_class", "?"), 0) + 1
+                        by_outcome[ev.get("outcome", "?")] = by_outcome.get(ev.get("outcome", "?"), 0) + 1
+            print(f"audit: {ap}\nevents: {total}")
+            print("  by tool:    " + ", ".join(f"{k}={v}" for k, v in sorted(by_tool.items())))
+            print("  by action:  " + ", ".join(f"{k}={v}" for k, v in sorted(by_action.items())))
+            print("  by outcome: " + ", ".join(f"{k}={v}" for k, v in sorted(by_outcome.items())))
+            return 0
+    except (ValueError, schemas.SchemaError) as exc:
+        _emit_audit(db, "write", args.cmd, outcome="denial", note=str(exc)[:120])
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except OSError as exc:
+        _emit_audit(db, "write", args.cmd, outcome="error", note=str(exc)[:120])
         print(f"error: {exc}", file=sys.stderr)
         return 2
     return 2

@@ -99,7 +99,8 @@ def test_rotate_audit(tmp_path):
     audit = str(tmp_path / "audit.log")
     Path(audit).write_text("x" * 100, encoding="utf-8")
     assert rotation.rotate_audit(audit, max_bytes=10, keep=2) is True
-    assert Path(audit + ".1").exists() and Path(audit).read_text() == ""
+    assert Path(audit + ".1").exists()
+    assert json.loads(Path(audit).read_text().splitlines()[0])["type"] == "retention_gap"  # gap marker written
     assert rotation.rotate_audit(audit, max_bytes=10_000) is False     # under cap
 
 
@@ -123,6 +124,100 @@ def test_cli_record_json(tmp_path, capsys):
     assert pdb.main(["--db", db, "record", "--json", finding]) == 0
     recs = pdb.merged(db)
     assert recs[0]["attack_id"] == "T1059" and recs[0]["evidence_ref"] == "logs/x.txt"
+
+
+# ========================================================= PR1: audit + auto-gc + profiles
+def test_make_validate_audit():
+    a = schemas.make_audit("write", "record", target="ACME.com", outcome="success", dry_run=True)
+    assert a["type"] == "audit" and a["target"] == "acme.com" and a["dry_run"] is True
+    schemas.validate_audit(a)
+
+
+@pytest.mark.parametrize("bad", [
+    {"type": "audit", "schema_version": 1, "action_class": "hack", "outcome": "success", "dry_run": False},
+    {"type": "audit", "schema_version": 1, "action_class": "read", "outcome": "maybe", "dry_run": False},
+    {"type": "audit", "schema_version": 1, "action_class": "read", "outcome": "success", "dry_run": "no"},
+])
+def test_validate_audit_rejects(bad):
+    with pytest.raises(schemas.SchemaError):
+        schemas.validate_audit(bad)
+
+
+def test_make_validate_target_profile():
+    p = schemas.make_target_profile("acme.com", tech_stack=["NGINX", "aws"], endpoints=["/api"], notes="prod")
+    assert p["type"] == "target_profile" and p["tech_stack"] == ["aws", "nginx"]
+    schemas.validate_target_profile(p)
+    with pytest.raises(schemas.SchemaError):
+        schemas.validate_target_profile({"type": "target_profile", "schema_version": 1, "tech_stack": [1]})
+
+
+def test_audit_written_to_sibling_not_patterns(tmp_path):
+    db = str(tmp_path / "p.jsonl")
+    pdb.record(pat(), db)                                   # a pattern
+    pdb.record(schemas.make_audit("write", "record", target="acme.com"), db)  # an audit -> sibling
+    assert len(pdb.load(db)) == 1                           # patterns.jsonl has ONLY the pattern
+    assert (tmp_path / "audit.jsonl").is_file()
+    audit_lines = [l for l in (tmp_path / "audit.jsonl").read_text().splitlines() if l.strip()]
+    assert audit_lines and json.loads(audit_lines[0])["type"] == "audit"
+
+
+def test_profile_routed_to_profiles_file_and_recalled(tmp_path):
+    db = str(tmp_path / "p.jsonl")
+    pdb.record(schemas.make_target_profile("acme.com", tech_stack=["nginx"], ts=1.0), db)
+    pdb.record(schemas.make_target_profile("acme.com", tech_stack=["nginx", "aws"], ts=2.0), db)
+    assert (tmp_path / "profiles.jsonl").is_file()
+    assert pdb.load(db) == []                               # profiles do NOT pollute pattern recall
+    prof = pdb.recall_profile("acme.com", db)
+    assert prof["ts"] == 2.0 and "aws" in prof["tech_stack"]   # newest
+
+
+def test_maybe_gc_triggers_only_over_threshold_and_preserves(tmp_path):
+    db = str(tmp_path / "p.jsonl")
+    for ts in range(5):
+        pdb.record(pat(cvss=9.1, ts=ts), db)                # 5 dupes (same key)
+    assert rotation.maybe_gc(db, max_records=100) is None   # under threshold -> no-op
+    res = rotation.maybe_gc(db, max_records=3)              # over -> compact
+    assert res and res["compacted"] and res["after"] == 1
+    assert pdb.load(db)[0]["count"] == 5                    # knowledge preserved, not discarded
+
+
+def test_record_autogc_via_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("ENGAGEMENT_DB_MAX_RECORDS", "3")
+    db = str(tmp_path / "p.jsonl")
+    for ts in range(4):
+        pdb.record(pat(cvss=9.1, ts=ts), db)                # 4th record() triggers maybe_gc
+    # file compacted to 1 line; merged still has the single key with count summed
+    assert len(pdb.load(db)) == 1 and pdb.load(db)[0]["count"] >= 4
+
+
+def test_rotate_audit_writes_retention_gap(tmp_path):
+    ap = str(tmp_path / "audit.jsonl")
+    with open(ap, "w", encoding="utf-8") as fh:
+        for i in range(50):
+            fh.write(json.dumps(schemas.make_audit("read", "match", ts=float(i))) + "\n")
+    assert rotation.rotate_audit(ap, max_bytes=10, keep=2) is True
+    first = json.loads(open(ap, encoding="utf-8").readline())
+    assert first["type"] == "retention_gap" and first["dropped"] >= 0
+
+
+def test_cli_denial_audited(tmp_path):
+    db = str(tmp_path / "p.jsonl")
+    # invalid severity -> make_pattern raises -> exit 2 -> a denial audit is written
+    assert pdb.main(["--db", db, "record", "--target", "acme.com", "--vuln-class", "ssrf",
+                     "--severity", "BOGUS"]) == 2
+    audit = [json.loads(l) for l in (tmp_path / "audit.jsonl").read_text().splitlines() if l.strip()]
+    assert any(ev["type"] == "audit" and ev["outcome"] == "denial" for ev in audit)
+
+
+def test_cli_profile_and_audit_stats(tmp_path, capsys):
+    db = str(tmp_path / "p.jsonl")
+    assert pdb.main(["--db", db, "profile", "--target", "acme.com", "--tech-stack", "nginx,aws"]) == 0
+    assert pdb.main(["--db", db, "recall-profile", "--target", "acme.com"]) == 0
+    assert "nginx" in capsys.readouterr().out
+    assert pdb.main(["--db", db, "record", "--target", "acme.com", "--vuln-class", "ssrf", "--severity", "high"]) == 0
+    assert pdb.main(["--db", db, "audit-stats"]) == 0
+    out = capsys.readouterr().out
+    assert "by outcome" in out and "events:" in out
 
 
 # ========================================================= adversarial regressions
