@@ -181,3 +181,78 @@ def test_cli_check_exit_codes(tmp_path, capsys):
 def test_cli_classify(capsys):
     assert sg.main(["classify", "*.acme.com"]) == 0
     assert sg.main(["classify", "not a host"]) == 2
+
+
+# ========================================================= adversarial regressions
+# (each reproduces a confirmed red-team bypass; must now err SAFE)
+
+def test_regression_userinfo_authority_false_allow():
+    # "<in-scope>:<port>@<attacker>" connects to the attacker host -> must be OUT
+    s = make_scope(in_scope=["acme.com", "*.acme.com", "203.0.113.0/24"])
+    assert s.evaluate("acme.com:80@evil.com").in_scope is False
+    assert s.evaluate("a.acme.com:1@evil.com").in_scope is False
+    assert s.evaluate("203.0.113.1:9@evil.com").in_scope is False
+    assert s.evaluate("https://acme.com:80@evil.com/").in_scope is False
+    # the legitimate host is still extracted correctly
+    assert s.evaluate("https://x.acme.com@acme.com/").in_scope is True  # host is acme.com
+
+
+def test_regression_ipv6_zone_id_evasion():
+    s = make_scope(in_scope=["2001:db8::/32"], out_of_scope=["2001:db8::dead:beef"])
+    assert s.evaluate("2001:db8::dead:beef").in_scope is False
+    assert s.evaluate("2001:db8::dead:beef%0").in_scope is False       # zone id must not flip it
+    assert s.evaluate("2001:db8::dead:beef%eth0").in_scope is False
+    assert s.evaluate("[2001:db8::dead:beef%25eth0]:443").in_scope is False
+
+
+def test_regression_ipv4_mapped_ipv6_rule():
+    s = make_scope(in_scope=["203.0.113.0/24"], out_of_scope=["::ffff:203.0.113.13"])
+    assert s.evaluate("203.0.113.13").in_scope is False                # mapped-form rule excludes plain v4
+    assert s.evaluate("203.0.113.14").in_scope is True
+
+
+def test_regression_homograph_domain_rejected():
+    s = make_scope(in_scope=["*.acme.com", "acme.com"], out_of_scope=["dev.acme.com"])
+    homo = "dеv.acme.com"   # cyrillic 'e' (U+0435) -> not LDH -> invalid -> default-deny
+    assert s.evaluate(homo).in_scope is False
+    # a real subdomain still works
+    assert s.evaluate("dev2.acme.com").in_scope is True
+
+
+def test_regression_bad_url_port_no_crash():
+    s = make_scope(in_scope=["acme.com"])
+    # must not raise; host parses to acme.com regardless of the impossible port
+    d = s.evaluate("http://acme.com:99999/")
+    assert d.in_scope is True
+    assert s.evaluate("http://acme.com:notaport/").host == "acme.com"
+
+
+def test_regression_bad_port_url_rule_does_not_break_oos(tmp_path):
+    sf = tmp_path / "s.json"
+    sf.write_text('{"in_scope":["*.acme.com"],"out_of_scope":["https://x.acme.com:99999","secret.acme.com"]}',
+                  encoding="utf-8")
+    assert sg.main(["check", "secret.acme.com", "--scope", str(sf)]) == 3   # out-of-scope, no crash
+    assert sg.main(["check", "a.acme.com", "--scope", str(sf)]) == 0
+
+
+@pytest.mark.parametrize("data", [
+    {"in_scope": ["acme.com"], "max_cidr_hosts": "lots"},
+    {"in_scope": ["acme.com"], "max_cidr_hosts": [1, 2]},
+    {"in_scope": 5},
+    {"in_scope": "acme.com"},          # string, not list -> must NOT be split into chars
+    {"in_scope": [12345]},
+])
+def test_regression_malformed_scope_types_raise_scopeerror(data):
+    with pytest.raises(sg.ScopeError):
+        sg.Scope(data)
+
+
+def test_regression_expand_invalid_cidr_exit2():
+    assert sg.main(["expand", "not-a-cidr/24"]) == 2
+    assert sg.main(["expand", "999.999.999.0/24"]) == 2
+
+
+def test_punycode_domain_allowed():
+    # legitimate IDN supplied as punycode (LDH ASCII) must still work
+    s = make_scope(in_scope=["*.xn--80ak6aa92e.com"])
+    assert s.evaluate("a.xn--80ak6aa92e.com").in_scope is True

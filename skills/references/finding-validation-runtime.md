@@ -46,16 +46,30 @@ Use **two accounts you control** (victim `V`, attacker `A`):
   access control** (CWE-306/862), classify it as such — not IDOR.
 - If "the other id" is really still `A`'s own object ⇒ **self-IDOR** ⇒ REJECTED.
 
-## Common kill-signals (auto-rejected by the harness)
+## Structured proof signals (what the harness checks)
 
-| Looks like | Why it's killed |
-|------------|-----------------|
-| SSRF proven only by a DNS pingback | No internal response was read — reachability ≠ impact |
-| IDOR on your own account/object | Self-IDOR — no cross-principal access |
-| CORS `ACAO` reflected, no `ACAC:true` | Browser won't send credentials — not exploitable |
-| "Open redirect" to same-origin/relative | Not attacker-controlled destination |
-| XSS payload reflected but HTML-encoded | No script execution |
-| "RCE" that only crashes / blind, no output | Execution unproven (DoS ≠ RCE) |
+`validate_findings.py` is mechanical: it does **not** parse prose (prose is paraphrasable
+in both directions). It reads a `proof` object of explicit booleans. CONFIRMED requires the
+class's positive signal to be `true`; a disqualifier signal forces REJECTED; otherwise the
+finding is POSSIBLE. Set these honestly — the adversarial finding-validator agent / human
+review judges whether the boolean is *true*, and the evidence must back it.
 
-When in doubt, downgrade and gather the missing evidence. A smaller list of CONFIRMED
-findings beats a long list of POSSIBLEs every time.
+| Class (CWE) | `proof.<confirm>` = true to CONFIRM | `proof.<disqualify>` = true ⇒ REJECTED |
+|-------------|-------------------------------------|-----------------------------------------|
+| SSRF (918) | `internal_response_read` | — (no signal ⇒ POSSIBLE: DNS-only callback) |
+| IDOR/BOLA (639/862) | `cross_identity_confirmed` | `self_idor` |
+| CORS (942) | `creds_reflected_origin` | — |
+| Open redirect (601) | `external_redirect` | `same_origin` |
+| XSS (79/80) | `script_executed` | `encoded_inert` |
+| RCE / cmd / deser (78/77/94/502) | `command_output_captured` | — (blind/no output ⇒ POSSIBLE) |
+
+Example finding (one entry of the `--findings` JSON list):
+
+```json
+{"id":"FIND-014","title":"SSRF in webhook fetch","cwe":"CWE-918","severity":"High",
+ "evidence":["logs/FIND-014.txt"], "proof":{"internal_response_read": true}}
+```
+
+A finding with no structured proof, or only prose, can never tier above **POSSIBLE** for a
+recognized class — by design. When in doubt, downgrade and gather the missing evidence; a
+smaller list of CONFIRMED findings beats a long list of POSSIBLEs every time.

@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""scope_guard.py — executable engagement-scope enforcement.
+"""scope_guard.py - executable engagement-scope enforcement.
 
 Turns the prose ROE / scope-definition into a machine-readable allowlist that every
 active script can consult before it touches a target. Errs SAFE: anything not provably
-in-scope is treated as out-of-scope, and out-of-scope rules always win over in-scope.
+in-scope is treated as out-of-scope, out-of-scope rules always win over in-scope, and any
+unexpected error returns the documented error code (never silently "in-scope").
 
 Pure stdlib, cross-platform (no fcntl/POSIX-only deps).
+
+Host extraction is byte-for-byte what an HTTP client sees: targets are parsed through the
+same URL-authority logic as urllib/requests/curl, so userinfo tricks like
+"in-scope.com:80@evil.com" resolve to evil.com (the real connection host) and are denied.
 
 Scope file (JSON), see templates/scope/scope.schema.json:
   {
@@ -18,8 +23,11 @@ Scope file (JSON), see templates/scope/scope.schema.json:
 
 Wildcard semantics (deliberately strict for safety):
   "*.acme.com"  matches ONLY sub-domains (a.acme.com, x.y.acme.com).
-                It does NOT match the apex "acme.com" — list the apex separately.
+                It does NOT match the apex "acme.com" - list the apex separately.
                 It does NOT match look-alikes ("evil-acme.com", "acme.com.evil.com").
+Domains must be LDH ASCII; non-ASCII / homograph hosts are rejected (supply punycode).
+IPv6 zone ids (%eth0) and IPv4-mapped IPv6 (::ffff:a.b.c.d) are canonicalized before
+comparison so they cannot be used to dodge an out-of-scope rule.
 
 CLI:
   scope_guard.py check  <target> --scope scope.json     # exit 0=in-scope, 3=out, 2=error
@@ -38,6 +46,7 @@ from typing import Optional
 from urllib.parse import urlsplit
 
 DEFAULT_MAX_CIDR_HOSTS = 1024
+_LDH = set("abcdefghijklmnopqrstuvwxyz0123456789-")
 
 
 class ScopeError(Exception):
@@ -45,63 +54,65 @@ class ScopeError(Exception):
 
 
 # --------------------------------------------------------------------------- parsing
-def _strip_host(value: str) -> str:
-    """Lowercase, strip a single trailing dot and surrounding whitespace."""
-    h = value.strip().lower()
+def _norm_host(host: str) -> str:
+    """Lowercase and strip a single trailing dot. Does NOT strip IPv6 zones (only
+    _canon_ip does, and only for IPs) so a domain containing '%' stays invalid."""
+    h = (host or "").strip().lower()
     if h.endswith(".") and not h.endswith(".."):
         h = h[:-1]
     return h
 
 
-def split_host_port(value: str) -> tuple[str, Optional[int]]:
-    """Return (host, port) from a host, host:port, [v6], [v6]:port, or URL string."""
-    v = value.strip()
-    if "://" in v:
-        parts = urlsplit(v)
+def _from_authority(s: str) -> tuple[str, Optional[int]]:
+    """Parse a URL or bare authority exactly like an HTTP client would.
+    Handles userinfo@host, host:port, and lazily-validated/out-of-range ports."""
+    try:
+        parts = urlsplit(s if "://" in s else "//" + s)
         host = parts.hostname or ""
-        return _strip_host(host), parts.port
-    # bracketed IPv6 literal, optionally with :port
-    if v.startswith("["):
+        try:
+            port = parts.port
+        except ValueError:
+            port = None
+        return _norm_host(host), port
+    except ValueError:
+        return "", None
+
+
+def split_host_port(value: str) -> tuple[str, Optional[int]]:
+    """Return (host, port) from a host, host:port, [v6], [v6]:port, userinfo@host, or URL."""
+    v = value.strip()
+    if not v:
+        return "", None
+    if v.startswith("["):  # bracketed IPv6 literal, optionally with :port
         end = v.find("]")
         if end != -1:
             host = v[1:end]
             rest = v[end + 1:]
             port = int(rest[1:]) if rest.startswith(":") and rest[1:].isdigit() else None
-            return _strip_host(host), port
-    # bare IPv6 (more than one colon, no brackets) -> no port
-    if v.count(":") > 1:
-        return _strip_host(v), None
-    if ":" in v:
-        host, _, p = v.rpartition(":")
-        return _strip_host(host), (int(p) if p.isdigit() else None)
-    return _strip_host(v), None
+            return _norm_host(host), port
+    if "://" not in v and v.count(":") > 1:  # bare IPv6 (no scheme, no brackets)
+        return _norm_host(v), None
+    return _from_authority(v)
 
 
-def classify(value: str) -> str:
-    """Classify a scope rule or target string: url|cidr|ip|wildcard|domain|invalid."""
-    v = value.strip()
-    if not v:
-        return "invalid"
-    if "://" in v:
-        return "url"
-    if v.startswith("*."):
-        base = _strip_host(v[2:])
-        return "wildcard" if _is_domain(base) else "invalid"
-    if "/" in v:
-        try:
-            ipaddress.ip_network(v, strict=False)
-            return "cidr"
-        except ValueError:
-            return "invalid"
-    host, _ = split_host_port(v)
+def _strip_zone(host: str) -> str:
+    return host.split("%", 1)[0] if "%" in host else host
+
+
+def _canon_ip(host: str):
+    """Parse host as an IP, dropping any IPv6 zone id and folding IPv4-mapped IPv6
+    (::ffff:a.b.c.d) to its embedded IPv4. Returns an ip_address object or None."""
     try:
-        ipaddress.ip_address(host)
-        return "ip"
+        ip = ipaddress.ip_address(_strip_zone(host))
     except ValueError:
-        return "domain" if _is_domain(host) else "invalid"
+        return None
+    if ip.version == 6 and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    return ip
 
 
 def _is_domain(host: str) -> bool:
+    """LDH-ASCII domain validation. Rejects non-ASCII (homographs) and bad structure."""
     if not host or len(host) > 253 or ".." in host:
         return False
     if host.startswith(".") or host.endswith("-"):
@@ -112,11 +123,35 @@ def _is_domain(host: str) -> bool:
     for lab in labels:
         if not lab or len(lab) > 63:
             return False
-        if not all(c.isalnum() or c == "-" for c in lab):
-            return False
         if lab.startswith("-") or lab.endswith("-"):
             return False
+        if any(c not in _LDH for c in lab):  # LDH only -> non-ASCII rejected
+            return False
     return True
+
+
+def classify(value: str) -> str:
+    """Classify a scope rule or target string: url|cidr|ip|wildcard|domain|invalid."""
+    if not isinstance(value, str):
+        return "invalid"
+    v = value.strip()
+    if not v:
+        return "invalid"
+    if "://" in v:
+        return "url"
+    if v.startswith("*."):
+        base = _norm_host(v[2:])
+        return "wildcard" if _is_domain(base) else "invalid"
+    if "/" in v:
+        try:
+            ipaddress.ip_network(v, strict=False)
+            return "cidr"
+        except ValueError:
+            return "invalid"
+    host, _ = split_host_port(v)
+    if _canon_ip(host) is not None:
+        return "ip"
+    return "domain" if _is_domain(host) else "invalid"
 
 
 # --------------------------------------------------------------------------- matching
@@ -140,25 +175,25 @@ def _rule_matches(rule: str, host: str, host_ip) -> bool:
     if kind == "cidr":
         if host_ip is None:
             return False
-        return host_ip in ipaddress.ip_network(rule, strict=False)
+        try:
+            return host_ip in ipaddress.ip_network(rule, strict=False)
+        except (ValueError, TypeError):
+            return False
     if kind == "ip":
         if host_ip is None:
             return False
         rhost, _ = split_host_port(rule)
-        return host_ip == ipaddress.ip_address(rhost)
+        return host_ip == _canon_ip(rhost)
     if kind == "wildcard":
         if host_ip is not None:
             return False
-        base = _strip_host(rule[2:])
-        # sub-domain only, exact label boundary -> rejects look-alikes & apex
-        return host != base and host.endswith("." + base)
+        base = _norm_host(rule[2:])
+        return host != base and host.endswith("." + base)  # sub-domain only
     if kind in ("domain", "url"):
         if host_ip is not None:
             return False
-        rhost, _ = split_host_port(rule if kind == "domain" else rule)
-        if kind == "url":
-            rhost = (urlsplit(rule).hostname or "").lower()
-        return host == _strip_host(rhost)
+        rhost = _norm_host(urlsplit(rule).hostname or "") if kind == "url" else split_host_port(rule)[0]
+        return host == rhost
     return False
 
 
@@ -167,14 +202,27 @@ class Scope:
         if not isinstance(data, dict):
             raise ScopeError("scope must be a JSON object")
         self.engagement = data.get("engagement", "")
-        self.in_scope = list(data.get("in_scope", []))
-        self.out_of_scope = list(data.get("out_of_scope", []))
-        self.max_cidr_hosts = int(data.get("max_cidr_hosts", DEFAULT_MAX_CIDR_HOSTS))
+        self.in_scope = self._as_rule_list(data, "in_scope")
+        self.out_of_scope = self._as_rule_list(data, "out_of_scope")
+        mch = data.get("max_cidr_hosts", DEFAULT_MAX_CIDR_HOSTS)
+        try:
+            self.max_cidr_hosts = int(mch)
+        except (TypeError, ValueError):
+            raise ScopeError(f"max_cidr_hosts must be an integer, got {mch!r}")
         if not self.in_scope:
-            raise ScopeError("scope.in_scope is empty — refusing to allow anything")
+            raise ScopeError("scope.in_scope is empty - refusing to allow anything")
         bad = [r for r in self.in_scope + self.out_of_scope if classify(r) == "invalid"]
         if bad:
             raise ScopeError(f"invalid scope rule(s): {bad}")
+
+    @staticmethod
+    def _as_rule_list(data: dict, key: str) -> list:
+        val = data.get(key, [])
+        if val is None:
+            return []
+        if not isinstance(val, list) or not all(isinstance(x, str) for x in val):
+            raise ScopeError(f"scope.{key} must be a list of strings")
+        return list(val)
 
     @classmethod
     def load(cls, path: str) -> "Scope":
@@ -190,14 +238,10 @@ class Scope:
         host, _ = split_host_port(target)
         if not host:
             return Decision(target, host, False, "could not parse a host from target")
-        try:
-            host_ip = ipaddress.ip_address(host)
-        except ValueError:
-            host_ip = None
-            if not _is_domain(host):
-                return Decision(target, host, False, "target is neither a valid IP nor domain")
-        # out-of-scope always wins
-        for rule in self.out_of_scope:
+        host_ip = _canon_ip(host)
+        if host_ip is None and not _is_domain(host):
+            return Decision(target, host, False, "target is neither a valid IP nor an LDH-ASCII domain")
+        for rule in self.out_of_scope:  # out-of-scope always wins
             if _rule_matches(rule, host, host_ip):
                 return Decision(target, host, False, "explicitly out-of-scope", rule)
         for rule in self.in_scope:
@@ -207,13 +251,16 @@ class Scope:
 
 
 def expand_cidr(cidr: str, max_hosts: int = DEFAULT_MAX_CIDR_HOSTS) -> list[str]:
-    net = ipaddress.ip_network(cidr, strict=False)
+    try:
+        net = ipaddress.ip_network(cidr, strict=False)
+    except ValueError as exc:
+        raise ScopeError(f"invalid CIDR: {cidr}") from exc
     hosts = net.hosts() if net.num_addresses > 2 else net
     out = []
     for i, addr in enumerate(hosts):
         if i >= max_hosts:
             raise ScopeError(
-                f"{cidr} exceeds max_hosts={max_hosts} ({net.num_addresses} addresses) — "
+                f"{cidr} exceeds max_hosts={max_hosts} ({net.num_addresses} addresses) - "
                 "raise --max deliberately or narrow the range")
         out.append(str(addr))
     return out
@@ -247,7 +294,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             else:
                 flag = "IN-SCOPE" if d.in_scope else "OUT-OF-SCOPE"
                 rule = f" [rule: {d.matched_rule}]" if d.matched_rule else ""
-                print(f"{flag}: {d.target} -> {d.host} — {d.reason}{rule}")
+                print(f"{flag}: {d.target} -> {d.host} - {d.reason}{rule}")
             return 0 if d.in_scope else 3
         if args.cmd == "classify":
             kind = classify(args.value)
@@ -259,6 +306,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             return 0
     except ScopeError as exc:
         print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except Exception as exc:  # never fail OPEN: any unexpected error -> documented error code
+        print(f"error: unexpected failure: {exc}", file=sys.stderr)
         return 2
     return 2
 
