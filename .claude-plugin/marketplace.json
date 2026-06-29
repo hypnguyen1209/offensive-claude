@@ -1,0 +1,20 @@
+{
+  "name": "offensive-claude-marketplace",
+  "description": "Marketplace for the offensive-claude security-research framework",
+  "owner": {
+    "name": "hypnguyen1209",
+    "email": "hypnguyen1209@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "offensive-claude",
+      "description": "Spec-driven offensive-security framework: 31 kill-chain skills, executable safety controls, pattern-learning memory, bounded engagement engine, and a SessionStart skill-invocation dispatcher.",
+      "version": "1.0.0",
+      "source": "./",
+      "author": {
+        "name": "hypnguyen1209",
+        "email": "hypnguyen1209@gmail.com"
+      }
+    }
+  ]
+}

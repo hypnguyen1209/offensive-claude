@@ -1,0 +1,21 @@
+{
+  "name": "offensive-claude",
+  "description": "Spec-driven offensive-security framework for Claude Code: 31 kill-chain skills, executable safety controls (scope/finding/OPSEC discipline), pattern-learning memory, and a bounded engagement engine — with a SessionStart dispatcher that enforces skill-invocation discipline.",
+  "version": "1.0.0",
+  "author": {
+    "name": "hypnguyen1209",
+    "email": "hypnguyen1209@gmail.com"
+  },
+  "homepage": "https://github.com/hypnguyen1209/offensive-claude",
+  "repository": "https://github.com/hypnguyen1209/offensive-claude",
+  "license": "MIT",
+  "keywords": [
+    "security",
+    "offensive-security",
+    "pentest",
+    "red-team",
+    "cyber-kill-chain",
+    "skills",
+    "mitre-attack"
+  ]
+}
