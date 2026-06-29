@@ -12,6 +12,12 @@ import pattern_db as pdb  # noqa: E402
 import rotation  # noqa: E402
 
 
+def _fixture(*parts):
+    """Build a secret-SHAPED test value from parts, so no contiguous real-secret literal exists in
+    source (defeats GitHub push-protection / secret scanners). The joined value is fake regardless."""
+    return "".join(parts)
+
+
 def pat(target="acme.com", vc="ssrf", technique="metadata", severity="high", cvss=9.1, ts=1000.0, **kw):
     return schemas.make_pattern(target, vc, technique=technique, severity=severity, cvss=cvss, ts=ts, **kw)
 
@@ -311,6 +317,119 @@ def test_cli_promote_deprecate(tmp_path, capsys):
     assert not pdb.match(pdb.merged(db), vuln_class="ssrf")           # excluded after deprecate
     assert pdb.main(["--db", db, "promote", "--target", "acme.com", "--vuln-class", "ssrf", "--technique", "metadata"]) == 0
     assert pdb.match(pdb.merged(db), vuln_class="ssrf")               # back after promote
+
+
+# ========================================================= PR3: secret guard + review + global
+@pytest.mark.parametrize("val", [
+    "password=hunter2longvalue", _fixture("-----BEGIN ", "RSA PRIVATE KEY-----"),
+    _fixture("AKIA", "IOSFODNN7EXAMPLE"), _fixture("ghp_", "abcdefghij0123456789klmnop"),
+    _fixture("eyJ", "hbGciOiJIUzI1NiJ9.payloadpart"),
+])
+def test_secret_guard_rejects_inline_secret(val):
+    with pytest.raises(schemas.SchemaError):
+        schemas.make_pattern("a.com", "ssrf", evidence_ref=val)
+    with pytest.raises(schemas.SchemaError):
+        schemas.make_pattern("a.com", "ssrf", source=val)
+
+
+def test_secret_guard_allows_paths():
+    schemas.make_pattern("a.com", "ssrf", evidence_ref="evidence/logs/FIND-001.txt", source="burp-repeater")
+
+
+def test_review_gated_record_collision(tmp_path, capsys):
+    db = str(tmp_path / "p.jsonl")
+    assert pdb.main(["--db", db, "record", "--target", "acme.com", "--vuln-class", "ssrf",
+                     "--technique", "metadata", "--severity", "high"]) == 0
+    capsys.readouterr()
+    n_before = len([x for x in Path(db).read_text().splitlines() if x.strip()])
+    # same key, no --resolve -> review_required, NOT written
+    assert pdb.main(["--db", db, "record", "--target", "acme.com", "--vuln-class", "ssrf",
+                     "--technique", "metadata", "--severity", "critical"]) == 0
+    assert "review_required" in capsys.readouterr().out
+    assert len([x for x in Path(db).read_text().splitlines() if x.strip()]) == n_before
+    # with --resolve update -> written
+    assert pdb.main(["--db", db, "record", "--target", "acme.com", "--vuln-class", "ssrf",
+                     "--technique", "metadata", "--severity", "critical", "--resolve", "update"]) == 0
+    assert len([x for x in Path(db).read_text().splitlines() if x.strip()]) > n_before
+
+
+def test_review_reject_excludes_from_recall(tmp_path):
+    db = str(tmp_path / "p.jsonl")
+    pdb.record(schemas.make_pattern("acme.com", "ssrf", technique="metadata", severity="high", ts=1, last_verified=1), db)
+    assert pdb.main(["--db", db, "record", "--target", "acme.com", "--vuln-class", "ssrf",
+                     "--technique", "metadata", "--resolve", "reject", "--reason", "false positive"]) == 0
+    assert not pdb.match(pdb.merged(db), vuln_class="ssrf")           # rejected (recency) -> excluded
+
+
+def test_global_scope_sanitized_and_isolated(tmp_path, monkeypatch):
+    db = str(tmp_path / "p.jsonl")
+    monkeypatch.setenv("ENGAGEMENT_GLOBAL_DB", str(tmp_path / "global.jsonl"))
+    assert pdb.main(["--db", db, "record", "--target", "acme.com", "--vuln-class", "ssrf",
+                     "--technique", "metadata", "--severity", "high", "--evidence-ref", "logs/x.txt", "--global"]) == 0
+    g = [json.loads(x) for x in Path(tmp_path / "global.jsonl").read_text().splitlines() if x.strip()]
+    assert g and g[0]["target"] == "global" and g[0]["evidence_ref"] == "" and g[0]["technique"] == "metadata"
+    # local recall is isolated from global; --include-global merges it in
+    local_only = pdb.match(pdb.merged(db), vuln_class="ssrf")
+    assert local_only and all(h["target"] == "acme.com" for h in local_only)
+    with_global = pdb.match(pdb.merged(db) + pdb.merged(pdb.global_db()), vuln_class="ssrf")
+    assert any(h["target"] == "global" for h in with_global)
+
+
+def test_cli_match_include_global(tmp_path, monkeypatch, capsys):
+    db = str(tmp_path / "p.jsonl")
+    monkeypatch.setenv("ENGAGEMENT_GLOBAL_DB", str(tmp_path / "global.jsonl"))
+    pdb.record(_sanitize := pdb._sanitize_for_global(schemas.make_pattern("x", "ssrf", technique="imds", severity="high")), pdb.global_db())
+    assert pdb.main(["--db", db, "match", "--vuln-class", "ssrf", "--include-global", "--json"]) == 0
+    assert "imds" in capsys.readouterr().out
+
+
+# ========================================================= red-team hardening (secret guard depth + scrub)
+@pytest.mark.parametrize("val", [
+    _fixture("wJalrXUtnFEMI/K7MDENG/", "bPxRfiCYEXAMPLEKEY"),           # AWS 40-char secret access key
+    _fixture("mysql://root:", "SuperSecretPass@db.internal:3306/prod"), # connection string w/ password
+    _fixture("postgres://admin:", "hunter2hunter2@10.0.0.5:5432/app"),
+    _fixture("sk_", "live_51H8xY2eZvKYlo2C0abcdefghijklmnopqrstuv"),    # stripe
+    _fixture("AIza", "SyB1a2b3c4d5e6f7g8h9i0jklmnopqrstuvwx"),          # google api key
+    _fixture("ya29.", "a0AfB12345abcdef67890ghijklmnop"),              # google oauth
+    _fixture("https://hooks.slack.com/services/", "T01ABCDEF/B01ABCDEF/XXXXXXXXXXXXXXXXXXXXXXXX"),
+    _fixture("Authorization Bearer ", "abcdef0123456789ABCDEF0123456789xyzqQ"),  # bearer token value
+    "Zx9Kq2Lm7Pw4Rt6Yv1Bn3Cf5Dg8Hj0Ik2Ol4Mp6Qr8St0UvWx",             # unprefixed high-entropy blob
+])
+def test_secret_guard_catches_more_classes(val):
+    assert schemas.looks_like_secret(val) is True
+
+
+def test_secret_guard_scans_all_persisted_fields():
+    with pytest.raises(schemas.SchemaError):                            # technique
+        schemas.make_pattern("acme.com", "ssrf", technique="exfil via " + _fixture("wJalrXUtnFEMI/K7MDENG/", "bPxRfiCYEXAMPLEKEY"))
+    with pytest.raises(schemas.SchemaError):                            # target_profile.notes
+        schemas.make_target_profile("acme.com", notes="root password=Sup3rS3cretValue123")
+    with pytest.raises(schemas.SchemaError):                            # audit.note
+        schemas.make_audit("write", "x", note="grabbed token=" + _fixture("ghp_", "16C7e42F292c6912E7710c838347Ae178B4aZZ"))
+
+
+@pytest.mark.parametrize("val", [
+    "password: weak policy observed (min 4 chars)",                    # documentary prose
+    "api_key=REDACTED reflected in response",                          # placeholder value
+    "default password=admin",                                          # short/weak, documentary
+    "evidence/logs/findings/FIND-001-metadata-theft-poc",              # long path, low entropy
+])
+def test_secret_guard_allows_documentary_prose(val):
+    assert schemas.looks_like_secret(val) is False
+
+
+def test_global_scrub_removes_client_target_from_technique():
+    rec = schemas.make_pattern("acme-internal.corp.local", "ssrf",
+                               technique="metadata theft via acme-internal.corp.local proxy", severity="high")
+    san = pdb._sanitize_for_global(rec)
+    assert "acme-internal" not in san["technique"] and san["target"] == "global"
+    assert san["evidence_ref"] == "" and san["source"] == ""
+
+
+def test_pattern_key_whitespace_normalized():
+    a = schemas.pattern_key({"target": "a.com", "vuln_class": "ssrf", "technique": "metadata   theft"})
+    b = schemas.pattern_key({"target": "a.com", "vuln_class": "ssrf", "technique": "metadata theft"})
+    assert a == b
 
 
 # ========================================================= adversarial regressions

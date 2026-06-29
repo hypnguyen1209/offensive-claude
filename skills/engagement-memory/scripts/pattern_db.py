@@ -91,6 +91,34 @@ def default_db() -> str:
         os.path.expanduser("~"), ".claude", "engagement-memory", "patterns.jsonl")
 
 
+def global_db() -> str:
+    """Cross-client store of SANITIZED techniques (no target/evidence). Per-client isolation is the
+    default; the global store is opt-in via `promote --global` / `record --global` / `match --include-global`."""
+    return os.environ.get("ENGAGEMENT_GLOBAL_DB") or os.path.join(
+        os.path.expanduser("~"), ".claude", "engagement-memory", "global.jsonl")
+
+
+def _sanitize_for_global(rec: dict) -> dict:
+    """Strip client-identifying data before a pattern crosses into the shared global store:
+    blank target/evidence/source AND scrub the client's host (and its labels) out of the free-text
+    technique, so a client identifier can't ride along in the carrier fields. tech_stack stays
+    (generic tech names like nginx/aws are transferable, not client-identifying)."""
+    out = dict(rec)
+    tgt = rec.get("target", "") or ""
+    tech = rec.get("technique", "") or ""
+    if tgt:
+        tech = re.sub(re.escape(tgt), "<target>", tech, flags=re.I)
+        for lab in re.split(r"[.:]", tgt):
+            if len(lab) >= 4:
+                tech = re.sub(r"\b" + re.escape(lab) + r"\b", "<redacted>", tech, flags=re.I)
+    out["technique"] = tech
+    out["target"] = "global"
+    out["evidence_ref"] = ""
+    out["source"] = ""
+    out["count"] = 1
+    return out
+
+
 def load(path: str) -> list:
     """Read all valid pattern records (silently skip malformed/foreign lines)."""
     out = []
@@ -289,10 +317,15 @@ def main(argv: Optional[list] = None) -> int:
     r.add_argument("--cvss", type=float); r.add_argument("--tech-stack", dest="tech_stack")
     r.add_argument("--evidence-ref", dest="evidence_ref"); r.add_argument("--source")
     r.add_argument("--json", nargs="?", const="-")
+    r.add_argument("--resolve", choices=["update", "merge", "reject", "force"],
+                   help="resolve a key collision (else review_required)")
+    r.add_argument("--reason", default="")
+    r.add_argument("--global", dest="to_global", action="store_true", help="also write a sanitized copy to the global store")
 
     m = sub.add_parser("match")
     m.add_argument("--vuln-class", dest="vuln_class"); m.add_argument("--tech-stack", dest="tech_stack")
     m.add_argument("--target"); m.add_argument("--query"); m.add_argument("--status")
+    m.add_argument("--include-global", dest="include_global", action="store_true")
     m.add_argument("--top", type=int, default=10); m.add_argument("--json", action="store_true")
 
     inj = sub.add_parser("inject", help="budgeted prior-intel card for a phase (top-N, byte-capped)")
@@ -304,6 +337,7 @@ def main(argv: Optional[list] = None) -> int:
         v = sub.add_parser(verb, help=f"{verb} a pattern by its (target, vuln_class, technique) key")
         v.add_argument("--target", required=True); v.add_argument("--vuln-class", dest="vuln_class", required=True)
         v.add_argument("--technique", default="")
+        v.add_argument("--global", dest="to_global", action="store_true", help="(promote) also publish a sanitized copy to the global store")
 
     pr = sub.add_parser("profile", help="record a target_profile (durable per-target facts)")
     pr.add_argument("--target", required=True); pr.add_argument("--tech-stack", dest="tech_stack")
@@ -321,12 +355,29 @@ def main(argv: Optional[list] = None) -> int:
     try:
         if args.cmd == "record":
             rec = _build_record(args)
+            key = schemas.pattern_key(rec)
+            existing = next((r for r in merged(db) if schemas.pattern_key(r) == key), None)
+            if existing is not None and not args.resolve:
+                # human-in-the-loop: a key collision is not silently merged
+                _emit_audit(db, "write", "record", target=rec.get("target"), outcome="denial", note="review_required")
+                print(json.dumps({"review_required": True, "key": list(key),
+                                  "existing": {k: existing.get(k) for k in ("status", "severity", "cvss", "count")},
+                                  "hint": "re-run with --resolve update|merge|reject|force"}))
+                return 0
+            if args.resolve == "reject":
+                rec["status"] = "rejected"
+                rec["rejected_reason"] = args.reason or "rejected on review"
+                rec["last_verified"] = schemas._now(None)
             record(rec, db)
-            _emit_audit(db, "write", "record", target=rec.get("target"), note=str(schemas.pattern_key(rec)))
-            print(f"recorded {schemas.pattern_key(rec)} (severity={rec['severity']} cvss={rec['cvss']})")
+            if args.to_global:
+                record(_sanitize_for_global(rec), global_db())
+                _emit_audit(db, "admin", "record-global", note=str(key))
+            _emit_audit(db, "write", "record", target=rec.get("target"), note=str(key))
+            print(f"recorded {key} (status={rec.get('status')} severity={rec['severity']} cvss={rec['cvss']})")
             return 0
         if args.cmd == "match":
-            hits = match(merged(db), vuln_class=args.vuln_class,
+            pool = merged(db) + (merged(global_db()) if args.include_global else [])
+            hits = match(pool, vuln_class=args.vuln_class,
                          tech_stack=(args.tech_stack.split(",") if args.tech_stack else None),
                          target=args.target, query=args.query, status=args.status, top=args.top)
             _emit_audit(db, "read", "match", target=args.target, note=f"{len(hits)} hits")
@@ -374,6 +425,9 @@ def main(argv: Optional[list] = None) -> int:
             newrec["last_verified"] = schemas._now(None)
             newrec["count"] = 1                    # status-change line, not a reconfirmation
             record(newrec, db)                     # append-only; merge resolves status by recency
+            if args.cmd == "promote" and getattr(args, "to_global", False):
+                record(_sanitize_for_global(newrec), global_db())
+                _emit_audit(db, "admin", "promote-global", target="global", note=str(key))
             _emit_audit(db, "admin", args.cmd, target=newrec["target"], note=str(key))
             print(f"{args.cmd}d {key} -> status={newrec['status']}")
             return 0

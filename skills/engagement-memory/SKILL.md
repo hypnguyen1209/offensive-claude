@@ -32,39 +32,54 @@ scripts:
 ## Model
 
 Append-only JSONL store (`~/.claude/engagement-memory/patterns.jsonl`, override `$ENGAGEMENT_DB`).
-A pattern is keyed by `(target, vuln_class, technique)` and ranked by **CVSS / severity** (real
-impact — never bug-bounty payout). Recall is an **explicit top-N query**, not "load everything"
-(anti-context-bloat). Duplicates are **merged** (count bumped), never blind-discarded; compaction
-preserves knowledge.
+Three record types in their own files so they never mix: **patterns** (`patterns.jsonl`),
+**target profiles** (`profiles.jsonl`), **audit log** (`audit.jsonl`, disposable). A pattern is keyed
+by `(target, vuln_class, technique)`, ranked by **severity / CVSS / confidence** (real impact, never
+payout), and carries a **lifecycle status** (`proposed/active/stale/deprecated/...`). Recall is an
+**explicit top-N query** (anti-context-bloat). Duplicates **merge** (count bumped, most-recent status
+wins), never blind-discarded; `compact` runs automatically over a size threshold and stays lossless.
+TTL `stale` patterns and `deprecated/rejected` ones drop out of default recall but are kept.
 
 ## Commands
 
 ```bash
-# RECALL at recon/weaponize — start from what worked (writes .engage/recon/prior-intel.md)
-python skills/engagement-memory/scripts/pattern_db.py match --vuln-class ssrf --tech-stack nginx,aws --top 10
+# RECALL — relevance-ranked (stdlib BM25 + aliases), active-only by default
+python skills/engagement-memory/scripts/pattern_db.py match --vuln-class ssrf --query "imds metadata" --tech-stack aws
+# INJECT — budgeted prior-intel card for a phase (top-N, byte-capped; $ENGAGEMENT_MEMORY_MODE=auto|debug|off)
+python skills/engagement-memory/scripts/pattern_db.py inject --vuln-class ssrf --query imds --max-bytes 1500
 
-# RECORD a confirmed finding at report time (flags or a finding JSON)
+# RECORD a confirmed finding (flags or finding JSON). A key collision needs --resolve update|merge|reject|force.
 python skills/engagement-memory/scripts/pattern_db.py record --target acme.com --vuln-class ssrf \
     --cwe CWE-918 --attack-id T1190 --severity high --cvss 9.1 --tech-stack nginx,aws --technique "metadata theft"
 python skills/engagement-memory/scripts/pattern_db.py record --json '<finding json from validate_findings>'
 
-# Housekeeping
-python skills/engagement-memory/scripts/pattern_db.py compact      # dedup-merge (patterns preserved)
-python skills/engagement-memory/scripts/pattern_db.py stats
+# LIFECYCLE + cross-client
+python skills/engagement-memory/scripts/pattern_db.py promote   --target acme.com --vuln-class ssrf --technique "metadata theft" [--global]
+python skills/engagement-memory/scripts/pattern_db.py deprecate --target acme.com --vuln-class ssrf --technique "metadata theft"
+python skills/engagement-memory/scripts/pattern_db.py match --vuln-class ssrf --include-global   # add sanitized cross-client TTPs
+
+# PROFILES + housekeeping + observability
+python skills/engagement-memory/scripts/pattern_db.py profile --target acme.com --tech-stack nginx,aws --endpoints /api,/admin
+python skills/engagement-memory/scripts/pattern_db.py recall-profile --target acme.com
+python skills/engagement-memory/scripts/pattern_db.py compact         # manual lossless dedup-merge
+python skills/engagement-memory/scripts/pattern_db.py stats           # patterns by class + profile count
+python skills/engagement-memory/scripts/pattern_db.py audit-stats     # action log: by tool/action/outcome
 ```
 
-Or use the `/engage.memory` command (recall | record | gc | stats).
+Or use the `/engage.memory` command (recall | inject | record | promote | deprecate | gc | stats).
 
 ## OPSEC & Detection
 
 | Concern | Note |
 |---------|------|
-| Sensitive data at rest | The DB stores techniques + CWE/CVSS + an evidence *reference*, not raw loot. Keep `evidence_ref` a path, not the secret. |
-| Cross-client bleed | Patterns are keyed by target; recall by class/stack is generic, but review before sharing a DB across clients. Use per-client `$ENGAGEMENT_DB` if isolation is required by ROE. |
-| Integrity | Records carry `schema_version`; malformed/foreign lines are skipped on read, not trusted. |
+| Secrets at rest | Stores technique + CWE/CVSS + an evidence *reference*, never loot. A **secret-input guard** rejects `evidence_ref`/`source` that look like inline secrets (private keys, `password=`, AKIA, JWTs, tokens) — store a path; **rotate** the exposed credential, don't just delete. |
+| Cross-client bleed | Per-client isolation is the default (`$ENGAGEMENT_DB`). The shared global store is opt-in (`promote --global` / `record --global`) and **sanitized** (target + evidence blanked); recall it only with `--include-global`. |
+| Trust | New auto-captures can be `proposed`; only confirmed/reviewed findings are `active`. A key collision is **review-gated** (`--resolve`), not silently merged. |
+| Auditability | Every record/match/compact/promote — and every refused line (`denial`) — is written to `audit.jsonl` (rotated by discard, with a retention-gap marker). The append-only patterns journal + audit log ARE the history. |
+| Integrity | Records carry `schema_version`; malformed/type-poisoned/foreign lines are skipped on read, never trusted. |
 
 ## Deep Dives
 
-- `scripts/schemas.py` — record types, validation, `pattern_key`, impact `rank_score`, `merge`.
-- `scripts/pattern_db.py` — append-only store, merge-on-read, ranked top-N `match`, CLI.
-- `scripts/rotation.py` — `compact` (dedup-merge, preserve) vs `rotate_audit` (discard disposable log).
+- `scripts/schemas.py` — record types (pattern/audit/target_profile/retention_gap), validation + secret guard, `pattern_key`/`pattern_id`, impact+confidence `rank_score`, recency-resolving `merge`.
+- `scripts/pattern_db.py` — typed routing, merge-on-read with TTL staleness, BM25 relevance recall, `inject`, lifecycle verbs, global scope, CLI.
+- `scripts/rotation.py` — `compact`/`maybe_gc` (lossless dedup-merge, auto-triggered) vs `rotate_audit` (discard the disposable log + write a retention-gap marker).

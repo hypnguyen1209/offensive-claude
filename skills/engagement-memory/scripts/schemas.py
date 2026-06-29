@@ -13,6 +13,8 @@ Record types:
 from __future__ import annotations
 
 import hashlib
+import math
+import re
 import time
 from typing import Optional
 
@@ -38,6 +40,52 @@ def normalize_target(t: str) -> str:
     return (t or "").strip().lower().rstrip(".")
 
 
+# A pattern stores a *reference* to evidence, never the secret itself. These catch obvious inline
+# secrets so loot can't leak into the memory store (rotate exposed creds — do not just delete).
+_SECRET_PATTERNS = [
+    re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----"),                 # PEM/SSH private key armor
+    re.compile(r"[a-z][a-z0-9+.\-]*://[^/\s:@]+:[^/\s@]{3,}@"),           # URI userinfo (user:pass@host)
+    re.compile(r"(?i)\b(gh[pousr]_|glpat-|whsec_|xox[baprs]-|sk_live_|sk_test_|rk_live_|sk-[A-Za-z0-9]|pk_live_)[A-Za-z0-9_\-]{10,}"),
+    re.compile(r"\bAIza[0-9A-Za-z_\-]{20,}"),                            # Google API key
+    re.compile(r"\bya29\.[0-9A-Za-z_\-]{10,}"),                          # Google OAuth token
+    re.compile(r"hooks\.slack\.com/services/[A-Za-z0-9/]{10,}"),         # Slack webhook
+    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),                                 # AWS access-key ID
+    re.compile(r"\beyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]+"),            # JWT
+    re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=\-]{16,}"),              # bearer token value
+]
+# credential keyword followed by a secret-SHAPED value (length, no spaces) — not prose/placeholder
+_KV_SECRET = re.compile(r"(?i)\b(pass(?:word|wd)?|secret|api[_-]?key|token|client[_-]?secret)\s*[:=]\s*([^\s,;'\"]{8,})")
+_PLACEHOLDER = re.compile(r"(?i)^(x{3,}|\*{3,}|redacted|example[a-z0-9]*|changeme|placeholder|your[-_].+|<.*>|\.{3}|null|none|n/?a)$")
+# A long CONTIGUOUS alnum run (no separators) is secret-shaped; paths/prose split into short words
+# on /,-,_,. so they never form a 16+ run. This separates AWS-secret/base64/SSH-body from file paths.
+_HIENT_CHUNK = re.compile(r"[A-Za-z0-9]{16,}")
+
+
+def _entropy(s: str) -> float:
+    if not s:
+        return 0.0
+    counts: dict = {}
+    for c in s:
+        counts[c] = counts.get(c, 0) + 1
+    n = len(s)
+    return -sum((c / n) * math.log2(c / n) for c in counts.values())
+
+
+def looks_like_secret(s: str) -> bool:
+    """Best-effort inline-secret detector (errs toward catching, to keep loot out of the store)."""
+    s = s or ""
+    for p in _SECRET_PATTERNS:
+        if p.search(s):
+            return True
+    m = _KV_SECRET.search(s)
+    if m and not _PLACEHOLDER.match(m.group(2)):     # real value, not REDACTED/EXAMPLE/<...>
+        return True
+    for tok in _HIENT_CHUNK.findall(s):              # unprefixed high-entropy credential material
+        if _entropy(tok) >= 3.6 and not _PLACEHOLDER.match(tok):
+            return True
+    return False
+
+
 def make_pattern(target: str, vuln_class: str, *, cwe: str = "", attack_id: str = "",
                  technique: str = "", severity: str = "medium", cvss: Optional[float] = None,
                  tech_stack=None, evidence_ref: str = "", source: str = "",
@@ -54,7 +102,7 @@ def make_pattern(target: str, vuln_class: str, *, cwe: str = "", attack_id: str 
         "vuln_class": (vuln_class or "").strip().lower(),
         "cwe": str(cwe or "").upper().replace("CWE_", "CWE-") if cwe else "",
         "attack_id": str(attack_id or "").upper(),
-        "technique": (technique or "").strip(),
+        "technique": " ".join((technique or "").split()),     # collapse internal whitespace (matches key)
         "severity": (severity or "medium").strip().lower(),
         "cvss": float(cvss) if cvss is not None else None,
         "evidence_ref": str(evidence_ref or ""),
@@ -108,6 +156,10 @@ def validate_pattern(rec: dict) -> None:
     ttl = rec.get("ttl_days")
     if ttl is not None and (isinstance(ttl, bool) or not isinstance(ttl, int) or ttl < 0):
         raise SchemaError("ttl_days must be a non-negative int")
+    for fld in ("evidence_ref", "source", "technique"):     # technique is free text -> can carry loot
+        if looks_like_secret(str(rec.get(fld) or "")):
+            raise SchemaError(f"{fld} looks like an inline secret — store a reference/path, "
+                              "not the secret itself (rotate the exposed credential)")
 
 
 def pattern_key(rec: dict) -> tuple:
@@ -115,7 +167,7 @@ def pattern_key(rec: dict) -> tuple:
     describe the same learned fact and are merged (count/last-seen)."""
     return (normalize_target(rec.get("target", "")),
             (rec.get("vuln_class") or "").lower(),
-            (rec.get("technique") or "").lower())
+            " ".join((rec.get("technique") or "").lower().split()))   # collapse whitespace -> stable key
 
 
 def pattern_id(rec: dict) -> str:
@@ -206,6 +258,9 @@ def validate_audit(rec: dict) -> None:
     dm = rec.get("duration_ms")
     if dm is not None and (isinstance(dm, bool) or not isinstance(dm, int)):
         raise SchemaError("audit.duration_ms must be an int or null")
+    for fld in ("note", "scope"):
+        if looks_like_secret(str(rec.get(fld) or "")):
+            raise SchemaError(f"audit.{fld} looks like an inline secret — log a reference, not the secret")
 
 
 # --------------------------------------------------------------------------- target profiles
@@ -239,6 +294,8 @@ def validate_target_profile(rec: dict) -> None:
         v = rec.get(k, [])
         if not isinstance(v, list) or not all(isinstance(s, str) for s in v):
             raise SchemaError(f"target_profile.{k} must be a list of strings")
+    if looks_like_secret(str(rec.get("notes") or "")):
+        raise SchemaError("target_profile.notes looks like an inline secret — store a reference, not the secret")
 
 
 def make_retention_gap(reason: str, dropped: int, ts: Optional[float] = None) -> dict:
