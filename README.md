@@ -162,6 +162,7 @@ a Sigma/EDR detection signature and OPSEC notes, and cites current (2024–2026)
 | 28 | container-k8s-escape | Exploit, Actions | Container breakout, runc CVEs, K8s RBAC escalation, admission/ingress attacks, node pivot |
 | 29 | browser-exploitation | Weaponize, Exploit | V8/JSC JIT type confusion, heap-sandbox & renderer→browser escape, Electron/IPC RCE |
 | 30 | macos-offensive | Exploit, Install | TCC/Gatekeeper bypass, keychain, LaunchAgent persistence, ESF evasion *(planned)* |
+| 31 | engagement-memory | Recon, Weaponize, Report | Cross-engagement pattern learning — ranked recall of prior techniques *(support)* |
 
 ## Agents (7)
 

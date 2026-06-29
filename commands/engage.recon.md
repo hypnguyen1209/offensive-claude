@@ -21,6 +21,16 @@ Loads:
 - `recon/recon-plan.md` — Reconnaissance methodology
 - `recon/attack-surface.md` — Attack surface map template
 
+### 1.5 Prior-Intel Recall (engagement-memory)
+Query the cross-engagement pattern memory for techniques that already worked against this
+target's class / tech stack, and write them to `.engage/recon/prior-intel.md` so weaponization
+starts from proven TTPs instead of re-deriving them:
+
+```bash
+python skills/engagement-memory/scripts/pattern_db.py match \
+    --target <host> --tech-stack <stack> --top 10 --json > .engage/recon/prior-intel.json
+```
+
 ### 2. Passive Reconnaissance
 Executes in order:
 

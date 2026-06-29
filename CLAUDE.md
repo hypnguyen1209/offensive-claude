@@ -58,6 +58,7 @@ Skills are loaded from `./skills/` directory:
 | 28 | container-k8s-escape | Container Breakout & Kubernetes Escape |
 | 29 | browser-exploitation | Browser & Client-Side Exploitation (V8, Electron) |
 | 30 | macos-offensive | macOS Offensive — TCC/Gatekeeper/Keychain *(planned)* |
+| 31 | engagement-memory | Cross-Engagement Pattern Learning *(support)* |
 
 > **Skill architecture:** skills use a progressive-disclosure layout — a thin `SKILL.md` router
 > plus per-skill `references/` (technique deep-dives) and `scripts/` (runnable tooling). Each technique
@@ -167,6 +168,7 @@ Skills are loaded from `./skills/` directory:
 | 28 | container-k8s-escape | Container Breakout & Kubernetes Escape | 4,7 (Exploit, Actions) |
 | 29 | browser-exploitation | Browser & Client-Side Exploitation | 2,4 (Weaponize, Exploit) |
 | 30 | macos-offensive | macOS Offensive (TCC/Gatekeeper/Keychain) *(planned)* | 4,5 (Exploit, Install) |
+| 31 | engagement-memory | Cross-Engagement Pattern Learning *(support)* | 1,2,8 (Recon, Weaponize, Report) |
 
 ## Agents Available
 

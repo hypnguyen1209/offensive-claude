@@ -23,6 +23,15 @@ Gathers all finding records from `exploit/findings/`:
 - Sorts findings by severity (Critical > High > Medium > Low)
 - Assigns risk ratings using CVSS v3.1 scoring
 
+### 1.5 Persist Confirmed Findings (engagement-memory)
+For each `[CONFIRMED]` finding (validated by `validate_findings.py` / the finding-validator agent),
+record it as a reusable pattern so future engagements recall it. `[POSSIBLE]`/`[REJECTED]` are NOT learned.
+
+```bash
+python skills/engagement-memory/scripts/pattern_db.py record --json '<finding json>'
+# store technique + CWE/CVSS + an evidence *reference* (path), never raw loot
+```
+
 ### 2. Load Report Template
 Loads `report/technical-report.md` template with sections:
 - Executive Summary
