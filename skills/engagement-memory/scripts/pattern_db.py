@@ -23,13 +23,67 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
+import re
 import sys
+import time
 from typing import Optional
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import schemas  # noqa: E402
 import rotation  # noqa: E402
+
+# --------------------------------------------------------------------------- relevance (stdlib BM25)
+# Free-text synonym expansion (query<->document vocabulary mismatch) — stdlib, no embeddings.
+ALIASES = {
+    "ssrf": ["server", "side", "request", "forgery"], "imds": ["metadata", "instance", "169.254.169.254"],
+    "idor": ["broken", "object", "level", "authorization", "bola"], "bola": ["idor", "object", "authorization"],
+    "rce": ["remote", "code", "execution", "command", "injection"], "lpe": ["local", "privilege", "escalation", "privesc"],
+    "privesc": ["privilege", "escalation"], "xss": ["cross", "site", "scripting"], "ad": ["active", "directory"],
+    "ntlm": ["relay", "net-ntlm"], "csrf": ["cross", "site", "request", "forgery"], "ssti": ["template", "injection"],
+}
+_TOKEN = re.compile(r"[a-z0-9]+")
+
+
+def tokenize(text: str) -> list:
+    return _TOKEN.findall((text or "").lower())
+
+
+def expand_query(terms) -> list:
+    out = list(terms)
+    for t in terms:
+        out += ALIASES.get(t, [])
+    return out
+
+
+def doc_tokens(rec: dict) -> list:
+    return tokenize(" ".join([rec.get("technique", ""), rec.get("vuln_class", ""), rec.get("attack_id", ""),
+                              rec.get("cwe", ""), " ".join(rec.get("tech_stack", []))]))
+
+
+def _build_idf(docs: list) -> dict:
+    n = len(docs) or 1
+    df: dict = {}
+    for d in docs:
+        for t in set(d):
+            df[t] = df.get(t, 0) + 1
+    return {t: math.log(1 + (n - c + 0.5) / (c + 0.5)) for t, c in df.items()}
+
+
+def bm25_score(q_terms: list, dt: list, idf: dict, avgdl: float, k1: float = 1.2, b: float = 0.75) -> float:
+    if not dt or avgdl <= 0:
+        return 0.0
+    dl = len(dt)
+    tf: dict = {}
+    for t in dt:
+        tf[t] = tf.get(t, 0) + 1
+    score = 0.0
+    for t in set(q_terms):
+        f = tf.get(t, 0)
+        if f:
+            score += idf.get(t, 0.0) * (f * (k1 + 1)) / (f + k1 * (1 - b + b * dl / avgdl))
+    return score
 
 
 def default_db() -> str:
@@ -56,13 +110,26 @@ def load(path: str) -> list:
     return out
 
 
-def merged(path: str) -> list:
-    """All patterns, duplicates merged by key (highest impact wins, counts summed)."""
+def _apply_staleness(rec: dict, now: float) -> None:
+    ttl = int(rec.get("ttl_days") or 0)
+    if ttl > 0 and rec.get("status", "active") == "active":
+        lv = float(rec.get("last_verified") or rec.get("ts") or 0)
+        if now - lv > ttl * 86400:
+            rec["status"] = "stale"          # soft decay: downranked, never deleted
+
+
+def merged(path: str, now: Optional[float] = None) -> list:
+    """All patterns, duplicates merged by key (highest impact wins, counts summed). Applies TTL
+    staleness (active -> stale once last_verified is older than ttl_days)."""
+    now = now if now is not None else time.time()
     by_key: dict = {}
     for rec in load(path):
         k = schemas.pattern_key(rec)
         by_key[k] = schemas.merge(by_key[k], rec) if k in by_key else rec
-    return list(by_key.values())
+    out = list(by_key.values())
+    for r in out:
+        _apply_staleness(r, now)
+    return out
 
 
 def _sibling(path: str, name: str) -> str:
@@ -135,12 +202,24 @@ def record(rec: dict, path: str) -> None:
         rotation.maybe_gc(path, audit_path(path))
 
 
+def _active_first(rec: dict) -> int:
+    return 1 if rec.get("status", "active") in schemas.ACTIVE_STATUSES else 0
+
+
 def match(records: list, *, vuln_class: Optional[str] = None, tech_stack=None,
-          target: Optional[str] = None, top: int = 10) -> list:
-    """Filter + rank (highest CVSS/severity, then most recent), return top-N."""
+          target: Optional[str] = None, query: Optional[str] = None,
+          status: Optional[str] = None, top: int = 10) -> list:
+    """Filter + rank, return top-N. Active/proposed rank above stale; deprecated/archived/rejected
+    are excluded by default. With `query`, blend a stdlib BM25 lexical score (after severity)."""
     want_stack = {s.strip().lower() for s in (tech_stack or []) if s.strip()}
     vc = (vuln_class or "").strip().lower()
     tgt = schemas.normalize_target(target) if target else None
+    allow = {x.strip().lower() for x in status.split(",")} if status else None
+
+    def status_ok(r):
+        s = r.get("status", "active")
+        return (s in allow) if allow else (s not in {"deprecated", "archived", "rejected"})
+
     hits = []
     for r in records:
         if vc and (r.get("vuln_class") or "").strip().lower() != vc:
@@ -151,8 +230,21 @@ def match(records: list, *, vuln_class: Optional[str] = None, tech_stack=None,
             have = {s.strip().lower() for s in r.get("tech_stack", []) if isinstance(s, str)}
             if not (want_stack & have):
                 continue
+        if not status_ok(r):
+            continue
         hits.append(r)
-    hits.sort(key=schemas.rank_score, reverse=True)
+
+    if query:
+        q = expand_query(tokenize(query))
+        docs = [doc_tokens(r) for r in hits]
+        idf = _build_idf(docs)
+        avgdl = (sum(len(d) for d in docs) / len(docs)) if docs else 0.0
+        scored = [(r, bm25_score(q, doc_tokens(r), idf, avgdl)) for r in hits]
+        scored.sort(key=lambda rs: (_active_first(rs[0]), schemas.SEVERITY_RANK.get(rs[0].get("severity"), 0),
+                                    round(rs[1], 3)) + schemas.rank_score(rs[0])[1:], reverse=True)
+        return [r for r, _ in scored[:max(0, top)]]
+
+    hits.sort(key=lambda r: (_active_first(r),) + schemas.rank_score(r), reverse=True)
     return hits[:max(0, top)]
 
 
@@ -200,7 +292,18 @@ def main(argv: Optional[list] = None) -> int:
 
     m = sub.add_parser("match")
     m.add_argument("--vuln-class", dest="vuln_class"); m.add_argument("--tech-stack", dest="tech_stack")
-    m.add_argument("--target"); m.add_argument("--top", type=int, default=10); m.add_argument("--json", action="store_true")
+    m.add_argument("--target"); m.add_argument("--query"); m.add_argument("--status")
+    m.add_argument("--top", type=int, default=10); m.add_argument("--json", action="store_true")
+
+    inj = sub.add_parser("inject", help="budgeted prior-intel card for a phase (top-N, byte-capped)")
+    inj.add_argument("--vuln-class", dest="vuln_class"); inj.add_argument("--tech-stack", dest="tech_stack")
+    inj.add_argument("--target"); inj.add_argument("--query")
+    inj.add_argument("--top", type=int, default=3); inj.add_argument("--max-bytes", dest="max_bytes", type=int, default=1500)
+
+    for verb in ("promote", "deprecate"):
+        v = sub.add_parser(verb, help=f"{verb} a pattern by its (target, vuln_class, technique) key")
+        v.add_argument("--target", required=True); v.add_argument("--vuln-class", dest="vuln_class", required=True)
+        v.add_argument("--technique", default="")
 
     pr = sub.add_parser("profile", help="record a target_profile (durable per-target facts)")
     pr.add_argument("--target", required=True); pr.add_argument("--tech-stack", dest="tech_stack")
@@ -225,7 +328,7 @@ def main(argv: Optional[list] = None) -> int:
         if args.cmd == "match":
             hits = match(merged(db), vuln_class=args.vuln_class,
                          tech_stack=(args.tech_stack.split(",") if args.tech_stack else None),
-                         target=args.target, top=args.top)
+                         target=args.target, query=args.query, status=args.status, top=args.top)
             _emit_audit(db, "read", "match", target=args.target, note=f"{len(hits)} hits")
             if args.json:
                 print(json.dumps(hits, indent=2))
@@ -235,6 +338,44 @@ def main(argv: Optional[list] = None) -> int:
                           f"{h.get('attack_id','')} {h.get('technique','')} (x{h.get('count',1)})")
                 if not hits:
                     print("(no prior patterns match)")
+            return 0
+        if args.cmd == "inject":
+            mode = os.environ.get("ENGAGEMENT_MEMORY_MODE", "auto").lower()
+            if mode == "off":
+                return 0
+            hits = match(merged(db), vuln_class=args.vuln_class, target=args.target, query=args.query,
+                         tech_stack=(args.tech_stack.split(",") if args.tech_stack else None), top=args.top)
+            _emit_audit(db, "read", "inject", target=args.target, note=f"{len(hits)} hits")
+            if not hits:
+                print("(no prior intel for this scope)")
+                return 0
+            lines, used = ["## Prior intel (engagement-memory)"], 0
+            for h in hits:
+                tag = "" if h.get("status", "active") == "active" else f" [{h.get('status')}]"
+                ln = (f"- {h.get('attack_id','')} {h['vuln_class']}: {h.get('technique','')} "
+                      f"(sev={h['severity']} cvss={h.get('cvss')} x{h.get('count',1)} "
+                      f"conf={h.get('confidence',1.0)}){tag}")
+                if used + len(ln) > args.max_bytes:
+                    break
+                lines.append(ln); used += len(ln)
+            if mode == "debug":
+                lines.append(f"<!-- mode=debug, {len(hits)} candidates, ~{used}B used -->")
+            print("\n".join(lines))
+            return 0
+        if args.cmd in ("promote", "deprecate"):
+            key = (schemas.normalize_target(args.target), (args.vuln_class or "").strip().lower(),
+                   (args.technique or "").strip().lower())
+            cur = next((r for r in merged(db) if schemas.pattern_key(r) == key), None)
+            if cur is None:
+                print(f"no pattern for key {key}", file=sys.stderr)
+                return 2
+            newrec = dict(cur)
+            newrec["status"] = "active" if args.cmd == "promote" else "deprecated"
+            newrec["last_verified"] = schemas._now(None)
+            newrec["count"] = 1                    # status-change line, not a reconfirmation
+            record(newrec, db)                     # append-only; merge resolves status by recency
+            _emit_audit(db, "admin", args.cmd, target=newrec["target"], note=str(key))
+            print(f"{args.cmd}d {key} -> status={newrec['status']}")
             return 0
         if args.cmd == "profile":
             rec = schemas.make_target_profile(

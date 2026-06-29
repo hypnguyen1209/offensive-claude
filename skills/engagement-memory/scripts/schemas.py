@@ -12,12 +12,18 @@ Record types:
 """
 from __future__ import annotations
 
+import hashlib
 import time
 from typing import Optional
 
 CURRENT_SCHEMA_VERSION = 1
 
 SEVERITY_RANK = {"info": 0, "informational": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
+
+# Lifecycle status (soft decay — knowledge is downranked/excluded, NEVER deleted).
+STATUS = {"proposed", "active", "stale", "deprecated", "archived", "rejected"}
+ACTIVE_STATUSES = {"active", "proposed"}          # what default recall returns
+STATUS_TRUST = {"active": 3, "proposed": 2, "stale": 1, "deprecated": 0, "archived": 0, "rejected": -1}
 
 
 class SchemaError(ValueError):
@@ -35,11 +41,14 @@ def normalize_target(t: str) -> str:
 def make_pattern(target: str, vuln_class: str, *, cwe: str = "", attack_id: str = "",
                  technique: str = "", severity: str = "medium", cvss: Optional[float] = None,
                  tech_stack=None, evidence_ref: str = "", source: str = "",
+                 status: str = "active", confidence: float = 1.0,
+                 last_verified: Optional[float] = None, ttl_days: int = 0,
                  ts: Optional[float] = None) -> dict:
+    t = _now(ts)
     rec = {
         "schema_version": CURRENT_SCHEMA_VERSION,
         "type": "pattern",
-        "ts": _now(ts),
+        "ts": t,
         "target": normalize_target(target),
         "tech_stack": sorted({str(s).strip().lower() for s in (tech_stack or []) if str(s).strip()}),
         "vuln_class": (vuln_class or "").strip().lower(),
@@ -51,6 +60,10 @@ def make_pattern(target: str, vuln_class: str, *, cwe: str = "", attack_id: str 
         "evidence_ref": str(evidence_ref or ""),
         "source": str(source or ""),
         "count": 1,
+        "status": (status or "active").strip().lower(),
+        "confidence": float(confidence),
+        "last_verified": _now(last_verified) if last_verified is not None else t,
+        "ttl_days": int(ttl_days),
     }
     validate_pattern(rec)
     return rec
@@ -83,6 +96,18 @@ def validate_pattern(rec: dict) -> None:
     ts_stack = rec.get("tech_stack", [])
     if not isinstance(ts_stack, list) or not all(isinstance(s, str) for s in ts_stack):
         raise SchemaError("tech_stack must be a list of strings")
+    # lifecycle fields are OPTIONAL (older records predate them) — validate only if present
+    if "status" in rec and rec.get("status") not in STATUS:
+        raise SchemaError(f"invalid status: {rec.get('status')!r}")
+    conf = rec.get("confidence")
+    if conf is not None and (isinstance(conf, bool) or not isinstance(conf, (int, float)) or not (0.0 <= float(conf) <= 1.0)):
+        raise SchemaError(f"confidence must be a number in 0-1: {conf!r}")
+    lv = rec.get("last_verified")
+    if lv is not None and (isinstance(lv, bool) or not isinstance(lv, (int, float))):
+        raise SchemaError("last_verified must be a number or null")
+    ttl = rec.get("ttl_days")
+    if ttl is not None and (isinstance(ttl, bool) or not isinstance(ttl, int) or ttl < 0):
+        raise SchemaError("ttl_days must be a non-negative int")
 
 
 def pattern_key(rec: dict) -> tuple:
@@ -91,6 +116,11 @@ def pattern_key(rec: dict) -> tuple:
     return (normalize_target(rec.get("target", "")),
             (rec.get("vuln_class") or "").lower(),
             (rec.get("technique") or "").lower())
+
+
+def pattern_id(rec: dict) -> str:
+    """Stable short id derived from the dedup key (same key -> same id, append-only friendly)."""
+    return hashlib.sha1("\x1f".join(pattern_key(rec)).encode("utf-8")).hexdigest()[:12]
 
 
 def rank_score(rec: dict) -> tuple:
@@ -104,7 +134,11 @@ def rank_score(rec: dict) -> tuple:
         ts = float(rec.get("ts") or 0.0)
     except (TypeError, ValueError):
         ts = 0.0
-    return (SEVERITY_RANK.get(rec.get("severity"), 0), cvss, ts)
+    try:
+        conf = float(rec.get("confidence", 1.0))
+    except (TypeError, ValueError):
+        conf = 1.0
+    return (SEVERITY_RANK.get(rec.get("severity"), 0), cvss, conf, ts)
 
 
 def merge(old: dict, new: dict) -> dict:
@@ -114,6 +148,19 @@ def merge(old: dict, new: dict) -> dict:
     out["count"] = int(old.get("count", 1)) + int(new.get("count", 1))
     out["ts"] = max(float(old.get("ts") or 0), float(new.get("ts") or 0))
     out["tech_stack"] = sorted(set(old.get("tech_stack", [])) | set(new.get("tech_stack", [])))
+    # the most RECENT status decision wins (so an explicit promote/deprecate is authoritative);
+    # ties break to higher trust. confidence + verification recency accumulate.
+    lo = float(old.get("last_verified") or old.get("ts") or 0)
+    ln = float(new.get("last_verified") or new.get("ts") or 0)
+    so, sn = old.get("status", "active"), new.get("status", "active")
+    if ln > lo:
+        out["status"] = sn
+    elif lo > ln:
+        out["status"] = so
+    else:
+        out["status"] = so if STATUS_TRUST.get(so, 2) >= STATUS_TRUST.get(sn, 2) else sn
+    out["confidence"] = max(float(old.get("confidence", 1.0)), float(new.get("confidence", 1.0)))
+    out["last_verified"] = max(lo, ln)
     return out
 
 

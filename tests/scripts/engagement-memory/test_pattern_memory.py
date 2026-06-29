@@ -220,6 +220,99 @@ def test_cli_profile_and_audit_stats(tmp_path, capsys):
     assert "by outcome" in out and "events:" in out
 
 
+# ========================================================= PR2: status/decay + BM25 + inject
+def test_make_pattern_lifecycle_defaults():
+    p = pat()
+    assert p["status"] == "active" and p["confidence"] == 1.0 and p["ttl_days"] == 0 and p["last_verified"] == p["ts"]
+
+
+def test_legacy_record_without_lifecycle_still_loads(tmp_path):
+    db = str(tmp_path / "p.jsonl")
+    legacy = {"schema_version": 1, "type": "pattern", "ts": 1.0, "target": "acme.com", "tech_stack": [],
+              "vuln_class": "ssrf", "cwe": "", "attack_id": "", "technique": "x", "severity": "high",
+              "cvss": 7.0, "evidence_ref": "", "source": "", "count": 1}   # no status/confidence/ttl
+    Path(db).write_text(json.dumps(legacy) + "\n", encoding="utf-8")
+    assert len(pdb.load(db)) == 1
+    assert pdb.match(pdb.merged(db), vuln_class="ssrf")[0]["vuln_class"] == "ssrf"   # ranks (defaults active)
+
+
+def test_rank_confidence_tiebreak():
+    a = schemas.make_pattern("a.com", "ssrf", severity="high", cvss=7.0, confidence=0.9, ts=1)
+    b = schemas.make_pattern("b.com", "ssrf", severity="high", cvss=7.0, confidence=0.4, ts=1)
+    assert schemas.rank_score(a) > schemas.rank_score(b)
+
+
+def test_merge_recency_wins_status():
+    old = schemas.make_pattern("a.com", "ssrf", technique="t", status="active", ts=10, last_verified=10)
+    new = schemas.make_pattern("a.com", "ssrf", technique="t", status="deprecated", ts=20, last_verified=20)
+    assert schemas.merge(old, new)["status"] == "deprecated"     # newer decision wins
+    assert schemas.merge(new, old)["status"] == "deprecated"     # order-independent
+
+
+def test_pattern_id_stable_by_key():
+    assert schemas.pattern_id(pat()) == schemas.pattern_id(pat(target="ACME.com."))
+
+
+def test_bm25_within_severity_beats_cvss(tmp_path):
+    db = str(tmp_path / "p.jsonl")
+    pdb.record(schemas.make_pattern("a.com", "ssrf", technique="dns rebinding ttl", severity="high", cvss=8.0, ts=1), db)
+    pdb.record(schemas.make_pattern("a.com", "ssrf", technique="imds metadata theft", severity="high", cvss=7.0, ts=2), db)
+    hits = pdb.match(pdb.merged(db), vuln_class="ssrf", query="imds metadata")
+    assert "metadata" in hits[0]["technique"]    # same severity -> relevance beats higher CVSS
+
+
+def test_alias_query_match(tmp_path):
+    db = str(tmp_path / "p.jsonl")
+    pdb.record(schemas.make_pattern("a.com", "ssrf", technique="metadata service credential read", severity="high", cvss=7.0, ts=1), db)
+    pdb.record(schemas.make_pattern("a.com", "ssrf", technique="port scan probe", severity="high", cvss=7.0, ts=2), db)
+    hits = pdb.match(pdb.merged(db), vuln_class="ssrf", query="imds")   # imds alias -> metadata
+    assert "metadata" in hits[0]["technique"]
+
+
+def test_status_filter(tmp_path):
+    db = str(tmp_path / "p.jsonl")
+    pdb.record(schemas.make_pattern("a.com", "ssrf", technique="a", status="active", ts=1), db)
+    pdb.record(schemas.make_pattern("a.com", "ssrf", technique="b", status="deprecated", ts=2, last_verified=2), db)
+    default = pdb.match(pdb.merged(db), vuln_class="ssrf")
+    assert all(h["status"] != "deprecated" for h in default)         # deprecated excluded by default
+    assert pdb.match(pdb.merged(db), vuln_class="ssrf", status="deprecated")  # explicit includes it
+
+
+def test_ttl_staleness_downranks(tmp_path):
+    db = str(tmp_path / "p.jsonl")
+    pdb.record(schemas.make_pattern("a.com", "ssrf", technique="old", severity="critical", cvss=9.0,
+                                    ttl_days=30, ts=1000, last_verified=1000), db)
+    pdb.record(schemas.make_pattern("a.com", "ssrf", technique="fresh", severity="low", cvss=2.0,
+                                    ttl_days=0, ts=2000, last_verified=2000), db)
+    recs = pdb.merged(db, now=1000 + 31 * 86400)                     # 31 days later
+    assert [r for r in recs if r["technique"] == "old"][0]["status"] == "stale"
+    assert pdb.match(recs, vuln_class="ssrf")[0]["technique"] == "fresh"   # active beats stale despite impact
+
+
+def test_inject_budget_modes_sentinel(tmp_path, capsys, monkeypatch):
+    db = str(tmp_path / "p.jsonl")
+    for i in range(6):
+        pdb.record(schemas.make_pattern("a.com", "ssrf", technique=f"technique number {i}", severity="high", cvss=9.0, ts=i), db)
+    assert pdb.main(["--db", db, "inject", "--vuln-class", "ssrf", "--max-bytes", "120"]) == 0
+    assert len(capsys.readouterr().out) < 400                        # byte budget truncates
+    monkeypatch.setenv("ENGAGEMENT_MEMORY_MODE", "off")
+    assert pdb.main(["--db", db, "inject", "--vuln-class", "ssrf"]) == 0
+    assert capsys.readouterr().out.strip() == ""                     # off mode suppresses
+    monkeypatch.delenv("ENGAGEMENT_MEMORY_MODE", raising=False)
+    assert pdb.main(["--db", db, "inject", "--vuln-class", "nope"]) == 0
+    assert "no prior intel" in capsys.readouterr().out               # low-signal sentinel
+
+
+def test_cli_promote_deprecate(tmp_path, capsys):
+    db = str(tmp_path / "p.jsonl")
+    pdb.record(schemas.make_pattern("acme.com", "ssrf", technique="metadata", severity="high", cvss=9.0, ts=1, last_verified=1), db)
+    assert pdb.match(pdb.merged(db), vuln_class="ssrf")
+    assert pdb.main(["--db", db, "deprecate", "--target", "acme.com", "--vuln-class", "ssrf", "--technique", "metadata"]) == 0
+    assert not pdb.match(pdb.merged(db), vuln_class="ssrf")           # excluded after deprecate
+    assert pdb.main(["--db", db, "promote", "--target", "acme.com", "--vuln-class", "ssrf", "--technique", "metadata"]) == 0
+    assert pdb.match(pdb.merged(db), vuln_class="ssrf")               # back after promote
+
+
 # ========================================================= adversarial regressions
 def _poison_db(tmp_path):
     """A db with one valid record + a battery of type-poisoned (schema-valid-looking) lines."""
