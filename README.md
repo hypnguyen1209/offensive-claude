@@ -5,6 +5,16 @@ A spec-driven offensive security framework for Claude Code — structured engage
 ## Quick Setup
 
 ```bash
+# Method 0: Install as a Claude Code plugin (recommended — auto-loads the skill dispatcher)
+/plugin marketplace add hypnguyen1209/offensive-claude
+/plugin install offensive-claude@offensive-claude-marketplace
+```
+
+Installing as a plugin registers a **SessionStart hook** that injects the
+`using-offensive-claude` dispatcher into every conversation, so the skill-invocation discipline
+(scope → finding → OPSEC) is active from the first message.
+
+```bash
 # Method 1: One-liner install (recommended)
 curl -sL https://raw.githubusercontent.com/hypnguyen1209/offensive-claude/main/install.sh | bash
 ```
