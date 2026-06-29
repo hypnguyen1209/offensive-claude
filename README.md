@@ -91,37 +91,51 @@ Each phase transition validates:
 
 ```
 .
-├── skills/                        # 30 skill modules (progressive-disclosure layout)
+├── skills/                        # 31 skill modules (progressive-disclosure layout)
 │   ├── recon-osint/
 │   │   ├── SKILL.md               #   thin router: when-to-activate + technique map + OPSEC/detection
 │   │   ├── references/            #   per-skill technique deep-dives (theory + code + detection + OPSEC)
 │   │   └── scripts/               #   runnable tooling backing each technique
+│   ├── coding-mastery/scripts/_lib/  # shared safety libs: scope_guard, action_guard, http_creds, redact_headers
+│   ├── engagement-memory/         #   cross-engagement pattern-learning memory (support skill)
 │   ├── exploit-development/
 │   ├── ...
 │   └── references/                # shared 47-file vulnerability pattern library
-├── agents/                        # 6 collaborative sub-agents
+├── agents/                        # 7 collaborative sub-agents (incl. finding-validator)
+├── engine/                        # bounded, resumable, traceable autopilot runner
+│   ├── engine.py                  #   phase runner (budget + loop-detect + trace + resume; not an LLM)
+│   ├── budget.py  loop_detector.py  tracer.py
+├── tests/                         # pytest suite for the safety-critical scripts (run: pytest)
 ├── templates/                     # Structured templates per Kill Chain phase
-│   ├── scope/                     #   Phase 0: scope-definition, emergency-contact
-│   ├── recon/                     #   Phase 1: recon-plan, attack-surface
-│   ├── weaponize/                 #   Phase 2: exploit-blueprint, payload-config
-│   ├── delivery/                  #   Phase 3: delivery-plan, social-engineering
-│   ├── exploit/                   #   Phase 4: exploit-plan, finding records
-│   ├── install/                   #   Phase 5: persistence, cleanup-plan
-│   ├── c2/                        #   Phase 6: c2-infrastructure, opsec-checklist
-│   ├── actions/                   #   Phase 7: objectives, collection-plan
-│   └── report/                    #   Phase 8: technical-report, executive-summary
-├── workflows/                     # Kill Chain workflow definitions (YAML)
-│   ├── WORKFLOW-ENGINE.md         #   Orchestration engine instructions
-│   ├── web-app-pentest.yml
-│   ├── red-team-engagement.yml
-│   └── ...
-├── commands/                      # /engage.* orchestration slash commands
+│   ├── scope/                     #   scope-definition + scope.schema.json/example (machine-readable ROE)
+│   └── ... (recon, weaponize, delivery, exploit, install, c2, actions, report)
+├── workflows/                     # Kill Chain workflow definitions (YAML) + WORKFLOW-ENGINE.md
+├── commands/                      # /engage.* orchestration slash commands (incl. memory, pickup)
 ├── presets/                       # Engagement type presets (7 presets)
+├── .github/                       # SECURITY.md (coordinated disclosure) + CI (workflows/tests.yml)
+├── TERMS.md                       # Acceptable-use policy / authorization requirement
 ├── CLAUDE.md                      # System prompt & behavior config
 ├── settings.json                  # Claude Code settings, permissions, MCP servers
 ├── install.sh                     # One-liner install script
 └── README.md
 ```
+
+## Safety, Testing & Autonomy
+
+The framework's safety controls are **executable, not prose**, and covered by an automated test suite:
+
+| Control | What it does |
+|---------|--------------|
+| `scope_guard.py` | Enforces the engagement scope (`scope.json`); host parsing matches HTTP clients (userinfo/IPv6/IDN safe), fails closed |
+| `validate_findings.py` | Evidence-grounding + per-class false-positive harness using structured proof signals |
+| `action_guard.py` | 3-state gate (allow / require_approval / block): out-of-scope → block, safe-method policy, per-host circuit breaker |
+| `redact_headers.py` | Masks Authorization/Cookie/API-key/JWT at the data boundary (fail-closed) before traffic reaches the model |
+| `engagement-memory/` | Persists confirmed findings as impact-ranked patterns; recalls top-N prior techniques at recon/weaponize |
+| `engine/` | Bounded autopilot: hard step/time budget, loop detection, append-only trace, `--resume`; offensive actions stay operator-gated |
+| `tests/` + CI | `pytest` suite (run `pytest`); GitHub Actions runs it + byte-compile + shellcheck on every push |
+
+All safety code is adversarially red-teamed and regression-tested. See [`TERMS.md`](TERMS.md) for the
+authorization requirement — every request the toolkit sends is the operator's responsibility.
 
 ## Skills (30)
 
