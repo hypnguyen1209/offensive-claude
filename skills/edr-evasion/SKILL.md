@@ -1,6 +1,6 @@
 ---
 name: edr-evasion
-description: EDR/AV bypass — hook unhooking, direct/indirect syscalls, PPID spoofing, process injection, AMSI bypass, ETW patching, memory encryption, behavioral evasion
+description: Use when bypassing EDR/AV to run a payload — hook unhooking, direct/indirect syscalls, PPID spoofing, process injection, AMSI bypass, ETW patching, memory/sleep encryption, behavioral evasion
 metadata:
   type: offensive
   phase: evasion

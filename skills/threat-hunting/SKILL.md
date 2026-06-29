@@ -1,6 +1,6 @@
 ---
 name: threat-hunting
-description: Hypothesis-driven threat hunting & detection engineering — ATT&CK v18 Detection-Strategies/Analytics, Sigma rule + correlation engineering with Detection-as-Code CI, Windows endpoint hunting (Sysmon 15/ETW-AMSI tamper/LSASS/LOLBins), network C2 hunting (JA4+, beaconing/RITA, DNS tunneling), cloud-identity hunting (Entra device-code/OAuth/PRT, CloudTrail), and Atomic Red Team purple-team validation
+description: Use when hunting threats or engineering detections — ATT&CK Detection-Strategies, Sigma + correlation with Detection-as-Code CI, Windows endpoint hunting (Sysmon/ETW/LSASS/LOLBins), network C2 hunting (JA4+, beaconing, DNS tunneling), cloud-identity hunting, Atomic Red Team purple-team validation
 metadata:
   type: defensive
   phase: detection

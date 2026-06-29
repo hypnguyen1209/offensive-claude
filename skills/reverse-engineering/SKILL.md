@@ -1,6 +1,6 @@
 ---
 name: reverse-engineering
-description: Binary & firmware reverse engineering — static triage + decompilation (Ghidra 11.4 / IDA / Binary Ninja + AI/MCP assist), dynamic instrumentation (GDB/Frida 17/Triton/angr), anti-reversing & packer bypass (ScyllaHide/TitanHide, VMProtect/Themida unpacking), OLLVM/VM-protector deobfuscation, UEFI/BIOS firmware RE + Secure Boot bypass research (LogoFAIL/PKfail/CVE-2024-7344), and patch-diffing for n-day generation
+description: Use when reverse-engineering a binary or firmware — static triage + decompilation (Ghidra/IDA/Binary Ninja), dynamic instrumentation (GDB/Frida 17/angr), anti-reversing & packer bypass, OLLVM/VM deobfuscation, UEFI/BIOS RE & Secure Boot research, patch-diffing for n-days
 metadata:
   type: offensive
   phase: analysis

@@ -1,6 +1,6 @@
 ---
 name: cloud-security
-description: Cloud attack paths across AWS/Azure/GCP — IAM/identity privilege escalation, IMDS/metadata SSRF, Entra device-code & PRT theft, GCP impersonation chains, Kubernetes/container escape, and IaC/CI-CD federation abuse
+description: Use when attacking AWS/Azure/GCP cloud — IAM/identity privilege escalation, IMDS/metadata SSRF, Entra device-code & PRT theft, GCP impersonation chains, Kubernetes/container escape, IaC/CI-CD federation abuse
 metadata:
   type: offensive
   phase: exploitation

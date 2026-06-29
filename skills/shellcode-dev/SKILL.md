@@ -1,6 +1,6 @@
 ---
 name: shellcode-dev
-description: Shellcode development — PIC techniques, PEB walking, API hashing, null-byte avoidance, encoders, loaders, PE-to-shellcode conversion, cross-platform shellcode
+description: Use when writing position-independent shellcode or a loader — PEB walking, API hashing, null-byte avoidance, encoders, loaders, PE-to-shellcode conversion, cross-platform shellcode
 metadata:
   type: offensive
   phase: exploitation

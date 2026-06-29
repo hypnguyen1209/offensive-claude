@@ -1,6 +1,6 @@
 ---
 name: ai-security
-description: AI/ML offensive security — direct/indirect prompt injection & multi-turn jailbreaks (Crescendo, Skeleton Key, Best-of-N, many-shot), RAG/vector poisoning (PoisonedRAG, embedding collision/inversion), agentic & MCP exploitation (tool poisoning, CVE-2025-54136/6514/53107), ML supply-chain RCE (pickle CVE-2025-32434/32444, picklescan bypasses), and model extraction / membership inference / adversarial suffixes (GCG)
+description: Use when attacking an AI/ML system or model — prompt injection & jailbreaks (Crescendo, Skeleton Key, Best-of-N), RAG/vector poisoning, agentic/MCP exploitation (CVE-2025-54136), ML supply-chain RCE (pickle CVE-2025-32434), model extraction / membership inference / adversarial suffixes (GCG)
 metadata:
   type: offensive
   phase: analysis

@@ -1,6 +1,6 @@
 ---
 name: incident-response
-description: IR & digital forensics — triage acquisition (Velociraptor/KAPE/UAC), Volatility 3 memory forensics incl. eBPF rootkits (LinkPro), Chainsaw/Hayabusa EVTX timelining, anti-forensics detection ($SI/$FN timestomp, USN, VSS), cloud IR (AWS IMDSv2/Entra token theft, NIST SP 800-61r3), and ransomware/ESXi response (Scattered Spider/UNC3944, Velociraptor abuse CVE-2025-6264)
+description: Use when responding to or forensically investigating an incident — triage acquisition (Velociraptor/KAPE), Volatility 3 memory forensics, Chainsaw/Hayabusa EVTX timelining, anti-forensics detection, cloud IR, ransomware/ESXi response
 metadata:
   type: defensive
   phase: response

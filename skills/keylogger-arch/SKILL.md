@@ -1,6 +1,6 @@
 ---
 name: keylogger-architecture
-description: Low-level keylogger architecture — SetWindowsHookEx, raw input devices, ETW-based capture, kernel drivers, stealth techniques, IOC analysis
+description: Use when designing or analyzing keystroke/input capture — SetWindowsHookEx, raw input devices, ETW-based capture, kernel drivers, stealth techniques and their IOCs
 metadata:
   type: offensive
   phase: research

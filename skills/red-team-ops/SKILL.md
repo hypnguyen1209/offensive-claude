@@ -1,6 +1,6 @@
 ---
 name: red-team-ops
-description: Full red team engagement — initial access, persistence, privilege escalation, defense evasion, C2 infrastructure, EDR bypass, living-off-the-land
+description: Use when running a full red-team engagement end-to-end — initial access, persistence, privilege escalation, defense evasion, C2 infrastructure, EDR bypass, living-off-the-land
 metadata:
   type: offensive
   phase: post-exploitation

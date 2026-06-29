@@ -1,6 +1,6 @@
 ---
 name: coding-mastery
-description: Advanced software engineering — systems programming, exploit development tooling, automation scripting, network programming, cryptography implementation
+description: Use when writing security tooling, exploits, scanners, or C2 in Python/C/Go/Rust/ASM — systems & network programming, automation, cryptography implementation
 metadata:
   type: utility
   phase: any

@@ -1,6 +1,6 @@
 ---
 name: privesc-windows
-description: Windows local privilege escalation — automated triage, SeImpersonate Potato chains (GodPotato/SigmaPotato/PrintNotifyPotato), service & DLL hijacking, UAC bypass (fodhelper/ICMLuaUtil/IEditionUpgradeManager), kernel EoP CVEs + BYOVD (CVE-2025-29824/32701/62215), privileged-token-rights abuse, and stealthy credential harvesting (LSASS/SAM/DPAPI)
+description: Use when escalating privileges on a Windows host — SeImpersonate Potato chains (GodPotato/PrintNotifyPotato), service & DLL hijacking, UAC bypass (fodhelper/ICMLuaUtil), kernel EoP + BYOVD (CVE-2025-29824), token-rights abuse, LSASS/SAM/DPAPI credential harvesting
 metadata:
   type: offensive
   phase: post-exploitation

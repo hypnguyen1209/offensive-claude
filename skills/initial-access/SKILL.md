@@ -1,6 +1,6 @@
 ---
 name: initial-access
-description: Modern initial access techniques — phishing, payload delivery, HTML smuggling, ISO/IMG bypass, supply chain attacks, credential stuffing, exposed service exploitation
+description: Use when gaining initial access to a target — phishing, payload delivery, HTML smuggling, ISO/IMG/MOTW bypass, supply-chain, credential stuffing, exposed-service exploitation
 metadata:
   type: offensive
   phase: initial-access

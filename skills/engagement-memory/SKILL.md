@@ -1,6 +1,6 @@
 ---
 name: engagement-memory
-description: Cross-engagement pattern-learning memory — persist confirmed findings as ranked patterns and recall the top prior techniques for a target's class/stack at recon/weaponize, so engagements compound instead of re-deriving the same TTPs
+description: Use when recalling prior techniques at recon/weaponize, or recording a confirmed finding at report — cross-engagement pattern memory ranked by impact
 metadata:
   type: support
   phase: all

@@ -1,6 +1,6 @@
 ---
 name: opsec-discipline
-description: Use before any outward or offensive action (request, payload, persistence, lateral movement, exfil, or feeding captured traffic to the model) — to decide detection footprint, cleanup, and secret redaction first
+description: Use when about to take any outward or offensive action (request, payload, persistence, lateral movement, exfil, or feeding captured traffic to the model) — to decide detection footprint, cleanup, and secret redaction first
 ---
 
 # OPSEC Discipline

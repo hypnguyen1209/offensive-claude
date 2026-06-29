@@ -1,6 +1,6 @@
 ---
 name: windows-boundaries
-description: Windows security-boundary attacks — kernel/user crossing (win32k/dxgkrnl UAF CVE-2025-24983/62573), BYOVD kernel R/W (CVE-2025-8061, EDRKillShifter), UAC/COM elevation (ICMLuaUtil/fodhelper), AppContainer/LPAC & Chromium-Mojo sandbox escape (CVE-2025-2783/4609), PPL bypass (BYOVDLL CVE-2023-28229), RPC/ALPC & named-pipe impersonation (PhantomRPC, Potato)
+description: Use when crossing a Windows security boundary or escaping a sandbox — kernel/user crossing (win32k/dxgkrnl UAF CVE-2025-24983), BYOVD kernel R/W, UAC/COM elevation, AppContainer/LPAC & Chromium-Mojo sandbox escape (CVE-2025-2783), PPL bypass, RPC/ALPC & named-pipe impersonation
 metadata:
   type: offensive
   phase: exploitation

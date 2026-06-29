@@ -1,6 +1,6 @@
 ---
 name: active-directory-attack
-description: Active Directory exploitation — Kerberos roasting/delegation, coercion+NTLM/Kerberos relay (CVE-2025-33073, CVE-2026-20929), ADCS ESC1-16 (EKUwu CVE-2024-49019), ticket forgery & DCSync, dMSA BadSuccessor (CVE-2025-53779), BloodHound CE attack-path enumeration and domain dominance
+description: Use when attacking a Windows Active Directory domain — Kerberos roasting/delegation, coercion + NTLM/Kerberos relay (CVE-2025-33073), ADCS ESC1-16 (EKUwu), ticket forgery & DCSync, dMSA BadSuccessor (CVE-2025-53779), BloodHound attack-path enumeration, domain dominance
 metadata:
   type: offensive
   phase: exploitation

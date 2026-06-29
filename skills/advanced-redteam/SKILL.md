@@ -1,6 +1,6 @@
 ---
 name: advanced-redteam-ops
-description: Advanced red team operations — OPSEC discipline, C2 infrastructure design, redirectors, malleable profiles, living-off-the-land, data exfiltration, infrastructure segregation
+description: Use when designing C2 infrastructure or OPSEC for a long-haul red-team op — redirectors, malleable profiles, tiered/segregated infra, living-off-the-land, data exfiltration
 metadata:
   type: offensive
   phase: operations

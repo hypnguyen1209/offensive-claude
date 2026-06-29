@@ -1,6 +1,6 @@
 ---
 name: ai-agent-redteam
-description: Red teaming of agentic AI / LLM applications — indirect & zero-click prompt injection, MCP tool poisoning, persistent memory poisoning, excessive-agency tool abuse, automated multi-turn jailbreaks, and PyRIT/Garak/Promptfoo test harnesses
+description: Use when red-teaming an agentic AI / LLM application — indirect & zero-click prompt injection, MCP tool poisoning, persistent memory poisoning, excessive-agency tool abuse, multi-turn jailbreaks, PyRIT/Garak/Promptfoo harnesses
 metadata:
   type: offensive
   phase: exploit

@@ -1,6 +1,6 @@
 ---
 name: recon-osint
-description: Reconnaissance & OSINT — passive/active subdomain enumeration, attack-surface mapping (httpx/katana/JS secrets), subdomain takeover (incl. S3 supply-chain pivot), multi-cloud + Azure tenant recon, GitHub/GitLab secret dorking, breach/infostealer credential intelligence (HIBP v3, DeHashed), and CVE prioritization (NVD 2.0 / EPSS v4 / CISA KEV)
+description: Use when mapping a target's external attack surface or gathering OSINT — subdomain enumeration, attack-surface mapping (httpx/katana/JS secrets), subdomain takeover, multi-cloud/Azure tenant recon, GitHub secret dorking, breach/infostealer credential intel, CVE prioritization (EPSS/KEV)
 metadata:
   type: offensive
   phase: reconnaissance

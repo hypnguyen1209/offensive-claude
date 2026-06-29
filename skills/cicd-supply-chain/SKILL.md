@@ -1,6 +1,6 @@
 ---
 name: cicd-supply-chain
-description: CI/CD pipeline poisoning and software supply-chain attacks — pwn requests, poisoned pipeline execution, compromised actions, mutable-tag/cache poisoning, dependency confusion, registry worms, runner backdoors, OIDC trust abuse, and build-provenance defense
+description: Use when attacking or auditing a CI/CD pipeline or software supply chain — pwn requests, poisoned pipeline execution, compromised/mutable-tag actions, dependency confusion, registry worms, runner backdoors, OIDC trust abuse, SLSA/provenance
 metadata:
   type: offensive
   phase: weaponize-delivery-exploit
