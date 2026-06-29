@@ -1,6 +1,6 @@
 # Offensive Security Research Config for Claude Code
 
-A spec-driven offensive security framework for Claude Code — structured engagement workflows based on the Cyber Kill Chain, 30 specialized skills (multi-file progressive-disclosure), 7 collaborative agents, and a shared 47-file vulnerability reference library. Inspired by [GitHub's spec-kit](https://github.com/github/spec-kit) methodology.
+A spec-driven offensive security framework for Claude Code — structured engagement workflows based on the Cyber Kill Chain, 31 kill-chain skills (multi-file progressive-disclosure) plus a **discipline layer** (a SessionStart dispatcher + 5 process/discipline skills), 7 collaborative agents, and a shared 47-file vulnerability reference library. Inspired by [GitHub's spec-kit](https://github.com/github/spec-kit) and [obra/superpowers](https://github.com/obra/superpowers).
 
 ## Quick Setup
 
@@ -108,9 +108,17 @@ Each phase transition validates:
 │   │   └── scripts/               #   runnable tooling backing each technique
 │   ├── coding-mastery/scripts/_lib/  # shared safety libs: scope_guard, action_guard, http_creds, redact_headers
 │   ├── engagement-memory/         #   cross-engagement pattern-learning memory (support skill)
+│   ├── using-offensive-claude/    #   SessionStart DISPATCHER — skill-invocation discipline
+│   ├── engagement-flow/           #   process skills: sequence the kill chain,
+│   ├── scope-discipline/          #   no target without authorization,
+│   ├── finding-discipline/        #   no [CONFIRMED] without proof,
+│   ├── opsec-discipline/          #   detection/cleanup/redaction before acting,
+│   ├── writing-offensive-skills/  #   authoring conventions
 │   ├── exploit-development/
 │   ├── ...
 │   └── references/                # shared 47-file vulnerability pattern library
+├── .claude-plugin/                # plugin.json + marketplace.json (install as a Claude Code plugin)
+├── hooks/                         # SessionStart hook that injects the dispatcher every session
 ├── agents/                        # 7 collaborative sub-agents (incl. finding-validator)
 ├── engine/                        # bounded, resumable, traceable autopilot runner
 │   ├── engine.py                  #   phase runner (budget + loop-detect + trace + resume; not an LLM)
@@ -147,12 +155,30 @@ The framework's safety controls are **executable, not prose**, and covered by an
 All safety code is adversarially red-teamed and regression-tested. See [`TERMS.md`](TERMS.md) for the
 authorization requirement — every request the toolkit sends is the operator's responsibility.
 
-## Skills (30)
+## Skill-Invocation Discipline (dispatcher + process skills)
+
+Installed as a plugin, a **SessionStart hook** injects the `using-offensive-claude` dispatcher into
+every conversation: *if there's even a 1% chance a skill applies, invoke it before acting.* Process /
+discipline skills come **before** domain skills (the offensive analog of brainstorming / TDD / debugging):
+
+| Process skill | Rule | Backed by |
+|---------------|------|-----------|
+| `engagement-flow` | Sequence the kill chain with quality gates | `/engage.*`, `engine/` |
+| `scope-discipline` | **No target without authorization** | `scope_guard.py`, `action_guard.py` |
+| `finding-discipline` | **No `[CONFIRMED]` without proof** | `validate_findings.py`, `finding-validator` |
+| `opsec-discipline` | Decide detection / cleanup / redaction before acting | `redact_headers.py` |
+| `writing-offensive-skills` | Conventions for authoring skills in this repo | — |
+
+Each discipline skill carries an Iron Law + Red-Flags + Rationalizations table (resists shortcutting
+under pressure). The dispatcher auto-loads; domain skills below are invoked via the `Skill` tool.
+
+## Skills (31 domain)
 
 Each skill is a progressive-disclosure module: a thin `SKILL.md` router (when-to-activate, a technique
 map of *technique → ATT&CK ID → CWE → reference → script*, and an OPSEC/detection summary), backed by
 per-skill `references/` deep-dives and runnable `scripts/`. Every technique pairs the offensive path with
 a Sigma/EDR detection signature and OPSEC notes, and cites current (2024–2026) CVEs/techniques.
+Descriptions use `Use when…` triggers so the dispatcher routes to the right skill.
 
 | # | Skill | Kill Chain | Coverage |
 |---|-------|-----------|----------|
