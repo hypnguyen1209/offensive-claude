@@ -11,11 +11,13 @@ the control loop, it does not free-hack.
 CLI:
   engine.py run --workflow web-app-pentest [--target acme.com] [--scope scope.json]
                 [--max-steps N] [--max-seconds S] [--state .engage/engine] [--resume]
-  exit 0 ok, 2 error
+  exit 0 ok, 3 halted on scope violation, 2 error
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import sys
 from typing import Callable, Optional
@@ -110,7 +112,8 @@ def plan_from_workflow(wf: dict, target: Optional[str] = None) -> list:
     for name in order:
         ph = phases[name]
         if name == "scope" and target:
-            plan.append({"id": "scope_check", "action": "scope_check", "phase": name, "target": target})
+            # always=True -> the scope gate is NEVER skipped by --resume (a forged trace can't bypass it)
+            plan.append({"id": "scope_check", "action": "scope_check", "phase": name, "target": target, "always": True})
         plan.append({"id": f"phase:{name}", "action": "phase", "phase": name,
                      "skills": ph.get("skills", []), "templates": ph.get("templates", []),
                      "gate": ph.get("gate", {})})
@@ -139,13 +142,20 @@ class Engine:
             self.tracer.record("operator_bump", text=text)
             open(self.bump_path, "w", encoding="utf-8").close()  # consume
 
+    def _plan_hash(self) -> str:
+        payload = json.dumps([[s.get("id"), s.get("action")] for s in self.plan], sort_keys=True)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
     def run(self, resume: bool = False) -> dict:
-        completed = self.tracer.completed_step_ids() if resume else set()
-        self.tracer.record("run_started", plan_len=len(self.plan), resume=resume, completed=len(completed))
+        plan_hash = self._plan_hash()
+        completed = self.tracer.completed_step_ids(plan_hash) if resume else set()
+        self.tracer.record("run_started", plan_len=len(self.plan), resume=resume,
+                           completed=len(completed), plan_hash=plan_hash)
         halted = None
         for step in self.plan:
             sid = step.get("id", step.get("action", "?"))
-            if sid in completed:
+            # safety-critical steps (always=True, e.g. scope_check) are NEVER skipped by resume
+            if sid in completed and not step.get("always"):
                 self.tracer.record("step_skipped_resume", step_id=sid)
                 continue
             ex, why = self.budget.exhausted()
@@ -167,6 +177,12 @@ class Engine:
             self.budget.tick()
             self.tracer.record("step_done", step_id=sid, action=step.get("action"),
                                phase=step.get("phase"), result=result)
+            # the scope gate is non-negotiable: an out-of-scope target halts the whole run
+            if step.get("action") == "scope_check" and result.get("in_scope") is False:
+                halted = f"scope violation: {result.get('target')} is out of scope"
+                self.tracer.record("scope_violation", step_id=sid, target=result.get("target"),
+                                   reason=result.get("reason"))
+                break
         finished = halted is None and self.budget.can_finish()
         self.tracer.record("run_finished", steps=self.budget.steps,
                            elapsed=round(self.budget.elapsed(), 3), halted=halted, finished=finished)
@@ -203,6 +219,8 @@ def main(argv: Optional[list] = None) -> int:
         summary = eng.run(resume=args.resume)
         print(f"engine: {summary['steps']} steps, finished={summary['finished']}, "
               f"halted={summary['halted']}; trace={tracer.path}")
+        if summary["halted"] and "scope violation" in summary["halted"]:
+            return 3   # halted on a scope violation — automation must notice
         return 0
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)

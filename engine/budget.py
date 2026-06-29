@@ -16,7 +16,7 @@ class Budget:
                  min_steps: int = 3, clock: Callable[[], float] = time.monotonic):
         self.max_steps = max(1, int(max_steps))
         self.max_seconds = float(max_seconds)
-        self.min_steps = max(0, int(min_steps))
+        self.min_steps = max(1, int(min_steps))   # floor 1: a 'finished' run did >=1 real step
         self.clock = clock
         self.steps = 0
         self._t0 = clock()

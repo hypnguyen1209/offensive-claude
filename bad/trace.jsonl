@@ -1,0 +1,11 @@
+{"seq": 1, "type": "run_started", "plan_len": 9, "resume": false, "completed": 0}
+{"seq": 2, "type": "step_done", "step_id": "scope_check", "action": "scope_check", "phase": "scope", "result": {"target": "acme.com", "skipped": "no scope or target"}}
+{"seq": 3, "type": "step_done", "step_id": "phase:scope", "action": "phase", "phase": "scope", "result": {"phase": "scope", "skills": ["recon-osint"], "gate": ["targets_defined", "authorization_confirmed", "roe_signed"]}}
+{"seq": 4, "type": "step_done", "step_id": "phase:recon", "action": "phase", "phase": "recon", "result": {"phase": "recon", "skills": ["recon-osint", "web-pentest"], "gate": ["subdomains_enumerated", "ports_scanned", "tech_fingerprinted"]}}
+{"seq": 5, "type": "step_done", "step_id": "recall:recon", "action": "recall", "phase": "recon", "result": {"recalled": 0, "top": []}}
+{"seq": 6, "type": "step_done", "step_id": "phase:weaponize", "action": "phase", "phase": "weaponize", "result": {"phase": "weaponize", "skills": ["exploit-development", "shellcode-dev", "coding-mastery", "web-pentest"], "gate": ["payload_selected", "delivery_method_chosen"]}}
+{"seq": 7, "type": "step_done", "step_id": "recall:weaponize", "action": "recall", "phase": "weaponize", "result": {"recalled": 0, "top": []}}
+{"seq": 8, "type": "step_done", "step_id": "phase:delivery", "action": "phase", "phase": "delivery", "result": {"phase": "delivery", "skills": ["initial-access", "web-pentest"], "gate": ["delivery_executed"]}}
+{"seq": 9, "type": "step_done", "step_id": "phase:exploit", "action": "phase", "phase": "exploit", "result": {"phase": "exploit", "skills": ["exploit-development", "web-pentest", "crypto-analysis", "ai-security"], "gate": ["at_least_one_finding"]}}
+{"seq": 10, "type": "step_done", "step_id": "phase:report", "action": "phase", "phase": "report", "result": {"phase": "report", "skills": ["incident-response", "threat-hunting"], "gate": ["all_findings_documented", "report_generated"]}}
+{"seq": 11, "type": "run_finished", "steps": 9, "elapsed": 0.0, "halted": null, "finished": true}

@@ -80,12 +80,14 @@ def match(records: list, *, vuln_class: Optional[str] = None, tech_stack=None,
     tgt = schemas.normalize_target(target) if target else None
     hits = []
     for r in records:
-        if vc and r.get("vuln_class") != vc:
+        if vc and (r.get("vuln_class") or "").strip().lower() != vc:
             continue
-        if tgt and r.get("target") != tgt:
+        if tgt and schemas.normalize_target(r.get("target", "")) != tgt:
             continue
-        if want_stack and not (want_stack & set(r.get("tech_stack", []))):
-            continue
+        if want_stack:
+            have = {s.strip().lower() for s in r.get("tech_stack", []) if isinstance(s, str)}
+            if not (want_stack & have):
+                continue
         hits.append(r)
     hits.sort(key=schemas.rank_score, reverse=True)
     return hits[:max(0, top)]

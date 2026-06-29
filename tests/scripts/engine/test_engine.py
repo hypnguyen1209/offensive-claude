@@ -5,10 +5,13 @@ from pathlib import Path
 ENGINE = Path(__file__).resolve().parents[3] / "engine"
 sys.path.insert(0, str(ENGINE))
 
+import json  # noqa: E402
+
 import budget as bd           # noqa: E402
 import loop_detector as ld    # noqa: E402
 import tracer as tr           # noqa: E402
 import engine as eng          # noqa: E402
+import scope_guard as sg      # noqa: E402  (engine puts _lib on sys.path)
 
 
 def clk():
@@ -154,3 +157,61 @@ def test_plan_from_workflow_follows_next():
     assert "phase:scope" in ids and "phase:recon" in ids and "phase:report" in ids
     assert "recall:recon" in ids                         # recall inserted at recon
     assert "phase:orphan" not in ids                     # not reachable via next
+
+
+# ========================================================= adversarial regressions
+def test_regression_forged_trace_cannot_bypass_scope(tmp_path):
+    scope = sg.Scope({"engagement": "x", "in_scope": ["only-this.example.com"], "out_of_scope": ["acme.com"]})
+    plan = [{"id": "scope_check", "action": "scope_check", "phase": "scope", "target": "acme.com", "always": True},
+            {"id": "phase:recon", "action": "note", "phase": "recon", "text": "x"}]
+    p = tmp_path / "trace.jsonl"
+    # forged: step_done for everything, but NO run_started with the right plan_hash
+    p.write_text("\n".join(json.dumps({"seq": i + 1, "type": "step_done", "step_id": s})
+                           for i, s in enumerate(["scope_check", "phase:recon"])) + "\n", encoding="utf-8")
+    box, c = clk()
+    e = eng.Engine(plan, tracer=tr.Tracer(str(p)),
+                   budget=bd.Budget(max_steps=50, max_seconds=1e9, min_steps=1, clock=c),
+                   scope=scope, target="acme.com")
+    summary = e.run(resume=True)
+    assert summary["finished"] is False
+    assert "scope violation" in (summary["halted"] or "")
+    assert any(ev["type"] == "scope_violation" for ev in e.tracer.events())
+
+
+def test_regression_scope_check_always_runs_on_resume(tmp_path):
+    # even a legit resume must re-run the scope gate (always=True), not skip it
+    scope = sg.Scope({"engagement": "x", "in_scope": ["acme.com"]})
+    plan = [{"id": "scope_check", "action": "scope_check", "phase": "scope", "target": "acme.com", "always": True}]
+    p = tmp_path / "trace.jsonl"
+    box, c = clk()
+    e1 = eng.Engine(plan, tracer=tr.Tracer(str(p)), budget=bd.Budget(min_steps=1, clock=c), scope=scope, target="acme.com")
+    e1.run()
+    e2 = eng.Engine(plan, tracer=tr.Tracer(str(p)), budget=bd.Budget(min_steps=1, clock=c), scope=scope, target="acme.com")
+    e2.run(resume=True)
+    done = [ev for ev in e2.tracer.events() if ev["type"] == "step_done" and ev["step_id"] == "scope_check"]
+    assert len(done) == 2          # ran in BOTH runs (never skipped)
+
+
+def test_regression_poisoned_seq_does_not_brick(tmp_path):
+    p = tmp_path / "trace.jsonl"
+    p.write_text(json.dumps({"seq": "x", "type": "note"}) + "\n", encoding="utf-8")
+    t = tr.Tracer(str(p))                       # must NOT raise
+    assert t._last_seq() == 0
+    box, c = clk()
+    e = eng.Engine([{"id": "s0", "action": "note", "phase": "p"}], tracer=t, budget=bd.Budget(min_steps=1, clock=c))
+    assert e.run()["finished"] is True          # fresh run still works against the poisoned state dir
+
+
+def test_regression_min_steps_floor_and_empty_plan(tmp_path):
+    assert bd.Budget(min_steps=0).min_steps == 1
+    box, c = clk()
+    e = eng.Engine([], tracer=tr.Tracer(str(tmp_path / "t.jsonl")), budget=bd.Budget(min_steps=0, clock=c))
+    assert e.run()["finished"] is False         # empty plan / 0 steps -> not finished
+
+
+def test_regression_loop_detector_catches_alternating():
+    # window=3 so an alternating A,B,A,B can never reach max_repeats within the window;
+    # only the cumulative max_total can catch it.
+    d = ld.LoopDetector(window=3, max_repeats=5, max_total=6)
+    tripped = any(d.observe("a" if i % 2 == 0 else "b") for i in range(40))
+    assert tripped                               # A,B,A,B... eventually trips on max_total

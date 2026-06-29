@@ -61,19 +61,28 @@ def validate_pattern(rec: dict) -> None:
         raise SchemaError("pattern must be an object")
     if rec.get("type") != "pattern":
         raise SchemaError(f"not a pattern record: type={rec.get('type')!r}")
-    if rec.get("schema_version") != CURRENT_SCHEMA_VERSION:
-        raise SchemaError(f"schema_version mismatch: {rec.get('schema_version')} != {CURRENT_SCHEMA_VERSION}")
-    if not rec.get("target"):
-        raise SchemaError("pattern.target is required")
-    if not rec.get("vuln_class"):
-        raise SchemaError("pattern.vuln_class is required")
+    sv = rec.get("schema_version")
+    if isinstance(sv, bool) or not isinstance(sv, int) or sv != CURRENT_SCHEMA_VERSION:
+        raise SchemaError(f"schema_version must be int {CURRENT_SCHEMA_VERSION}, got {sv!r}")
+    if not rec.get("target") or not isinstance(rec.get("target"), str):
+        raise SchemaError("pattern.target is required (string)")
+    if not rec.get("vuln_class") or not isinstance(rec.get("vuln_class"), str):
+        raise SchemaError("pattern.vuln_class is required (string)")
     if rec.get("severity") not in SEVERITY_RANK:
         raise SchemaError(f"invalid severity: {rec.get('severity')!r}")
     cvss = rec.get("cvss")
-    if cvss is not None and not (0.0 <= float(cvss) <= 10.0):
-        raise SchemaError(f"cvss out of range 0-10: {cvss}")
-    if not isinstance(rec.get("tech_stack", []), list):
-        raise SchemaError("tech_stack must be a list")
+    if cvss is not None:
+        if isinstance(cvss, bool) or not isinstance(cvss, (int, float)) or not (0.0 <= float(cvss) <= 10.0):
+            raise SchemaError(f"cvss must be a number in 0-10 or null: {cvss!r}")
+    ts = rec.get("ts")
+    if ts is not None and (isinstance(ts, bool) or not isinstance(ts, (int, float))):
+        raise SchemaError(f"ts must be a number or null: {ts!r}")
+    count = rec.get("count", 1)
+    if isinstance(count, bool) or not isinstance(count, int):
+        raise SchemaError(f"count must be an int: {count!r}")
+    ts_stack = rec.get("tech_stack", [])
+    if not isinstance(ts_stack, list) or not all(isinstance(s, str) for s in ts_stack):
+        raise SchemaError("tech_stack must be a list of strings")
 
 
 def pattern_key(rec: dict) -> tuple:
@@ -85,10 +94,17 @@ def pattern_key(rec: dict) -> tuple:
 
 
 def rank_score(rec: dict) -> tuple:
-    """Sort key for recall: highest impact first, then most recent. Sort DESCENDING."""
-    return (float(rec.get("cvss") or 0.0),
-            SEVERITY_RANK.get(rec.get("severity"), 0),
-            float(rec.get("ts") or 0.0))
+    """Sort key for recall: SEVERITY first (so a critical with no CVSS can't rank below a
+    scored low), then CVSS, then recency. Sort DESCENDING. Coerces defensively."""
+    try:
+        cvss = float(rec.get("cvss") or 0.0)
+    except (TypeError, ValueError):
+        cvss = 0.0
+    try:
+        ts = float(rec.get("ts") or 0.0)
+    except (TypeError, ValueError):
+        ts = 0.0
+    return (SEVERITY_RANK.get(rec.get("severity"), 0), cvss, ts)
 
 
 def merge(old: dict, new: dict) -> dict:
