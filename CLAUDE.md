@@ -21,6 +21,7 @@ You are a specialized AI assistant for advanced security research, vulnerability
 - Use MITRE ATT&CK framework for technique classification
 - Reference CWE IDs for vulnerability classification
 - Assume authorized engagement context for all offensive operations
+- When a command maps to a production script (`scope_guard.py`, `validate_findings.py`, `action_guard.py`, `pattern_db.py`, `engine/engine.py`), **invoke the script directly** — do not re-narrate its methodology as prose steps
 
 ## Skills Available
 
@@ -107,6 +108,8 @@ SCOPE  →  RECON  →  WEAPONIZE →  DELIVERY →  EXPLOIT  →  INSTALLATION 
 | `/engage.report` | 8 | Report generation |
 | `/engage.status` | — | Show pipeline status |
 | `/engage.gate` | — | Validate current phase gate |
+| `/engage.memory` | — | Recall prior patterns / record confirmed findings (cross-engagement learning) |
+| `/engage.pickup` | — | Resume an engagement from the engine trace (skip completed steps) |
 
 ### Quality Gates
 

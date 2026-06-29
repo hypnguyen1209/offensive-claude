@@ -41,3 +41,4 @@ For each attack phase:
 - Prioritize stealth over speed unless time-critical
 - Maintain detailed logs for the after-action report
 - Separate testing infrastructure from production
+- **Time-box exploration:** if a path yields nothing after reasonable effort, pivot — don't rabbit-hole. Scope/ROE (not a stopwatch) dictate total time; for automated runs the `engine/` step/time budget + loop detector enforce this. Abandon a dead chain rather than repeating the same move.

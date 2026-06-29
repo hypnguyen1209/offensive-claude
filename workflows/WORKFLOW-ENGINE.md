@@ -633,6 +633,37 @@ Track engagement metrics in state file:
 }
 ```
 
+## Autopilot Engine (`engine/`)
+
+`engine/engine.py` is an optional **bounded, resumable, traceable runner** for a workflow. It is a
+deterministic scaffold — **not** an LLM brain (no LangGraph/Ollama). It sequences a workflow's phases
+under hard discipline and runs only registered SAFE actions; offensive technique execution stays with
+the operator/skills and is gated by `action_guard.py`. The engine enforces the control loop.
+
+```bash
+python engine/engine.py run --workflow web-app-pentest --target api.acme.com \
+    --scope .engage/scope/scope.json --state .engage/engine \
+    --max-steps 50 --max-seconds 7200 --min-steps 3
+# resume after interruption (skips completed steps from the trace):
+python engine/engine.py run --workflow web-app-pentest --target api.acme.com --state .engage/engine --resume
+```
+
+Controls (the "no rabbit hole" discipline):
+
+- **Budget** (`engine/budget.py`) — hard `--max-steps` and `--max-seconds` ceilings; `--min-steps`
+  before the run may declare itself finished (can't bail on step 1).
+- **Loop detector** (`engine/loop_detector.py`) — a sliding window of action signatures; when a move
+  recurs `max_repeats` times it is flagged as a loop and the engine pivots/skips instead of hammering.
+- **Tracer** (`engine/tracer.py`) — append-only JSONL trace at `<state>/trace.jsonl`; crash-safe and the
+  basis for `--resume` (completed `step_id`s are skipped).
+- **Operator bump** — drop a directive in `<state>/bump.txt`; it is recorded into the trace and consumed
+  between steps (inject an extra target / change of plan mid-run).
+
+Plan derivation: phases are ordered by following each phase's `next`; a `scope_check` (via `scope_guard.py`)
+is inserted at scope when a `--target` is given, and a memory `recall` (via `pattern_db.py`) at recon/weaponize.
+Built-in actions: `phase`, `scope_check`, `recall`, `note`. Register more in `ACTIONS` only for safe,
+deterministic steps — keep destructive/offensive execution operator-gated. Use `/engage.pickup` to resume.
+
 ## References
 
 - **Kill Chain:** Lockheed Martin Cyber Kill Chain
