@@ -115,6 +115,25 @@ def test_state_round_trip(tmp_path):
     assert cb2.is_open("h") is False
 
 
+def test_regression_poisoned_state_fails_closed(tmp_path):
+    # one bad opened_at value must NOT silently drop the whole breaker (re-allowing a blocked host)
+    box, clk = clock()
+    cb = ag.CircuitBreaker(threshold=2, cooldown=60, clock=clk)
+    cb.record_failure("acme.com"); cb.record_failure("acme.com")     # open
+    path = str(tmp_path / "s.json")
+    ag._save_state(path, cb)
+    data = json.loads(Path(path).read_text())
+    data["breaker"]["opened_at"]["b.com"] = "x"                       # poison a second host
+    data["breaker"]["fails"]["b.com"] = 1
+    Path(path).write_text(json.dumps(data))
+
+    cb2 = ag.CircuitBreaker(threshold=2, cooldown=60, clock=clk)
+    ag._load_state(path, cb2)
+    assert cb2.is_open("acme.com") is True       # still blocked despite unrelated corruption
+    assert cb2.is_open("b.com") is True          # unparseable opened_at -> treated as just-opened (fail-closed)
+    assert ag.ActionGuard(breaker=cb2).decide("GET", "acme.com").action == ag.BLOCK
+
+
 # --------------------------------------------------------- CLI exit codes
 def test_cli_exit_codes(tmp_path):
     sf = tmp_path / "scope.json"

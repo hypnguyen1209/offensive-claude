@@ -82,8 +82,22 @@ class CircuitBreaker:
         self._opened_at.pop(host, None)
 
     def load(self, data: dict) -> None:
-        self._fails = dict(data.get("fails", {}))
-        self._opened_at = {k: float(v) for k, v in data.get("opened_at", {}).items()}
+        # fail CLOSED + resilient: drop only bad entries, and treat an unparseable
+        # opened_at as "just opened" so a recorded-open host stays BLOCKED.
+        fails = {}
+        for k, v in (data.get("fails") or {}).items():
+            try:
+                fails[k] = int(v)
+            except (TypeError, ValueError):
+                fails[k] = self.threshold
+        opened = {}
+        for k, v in (data.get("opened_at") or {}).items():
+            try:
+                opened[k] = float(v)
+            except (TypeError, ValueError):
+                opened[k] = self.clock()
+        self._fails = fails
+        self._opened_at = opened
 
     def dump(self) -> dict:
         return {"fails": self._fails, "opened_at": self._opened_at}
