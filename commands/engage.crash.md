@@ -23,19 +23,19 @@ binary-analysis devcontainer (`.devcontainer/`); the rr/gcov/compile steps need 
 
 ### 2. Reproduce + root cause (rr time-travel)
 - `skills/reverse-engineering/scripts/rr_root_cause.sh <target> @@` (CRASH_INPUT=<poc>) — deterministic
-  record/replay; reverse-step to the corrupting write. See `references/rr-time-travel.md`.
+  record/replay; reverse-step to the corrupting write. See `skills/reverse-engineering/references/rr-time-travel.md`.
 - Output: a **`trace_proof`** artifact (function trace) + a root-cause summary.
 
 ### 3. Prove reachability (coverage)
 - If source is available, build `--coverage`, run the witness, `gcov` the vulnerable line — see
-  `references/coverage-reachability.md`. Output: a **`coverage_proof`** (gcov line-hit).
+  `skills/reverse-engineering/references/coverage-reachability.md`. Output: a **`coverage_proof`** (gcov line-hit).
 - Either artifact satisfies the native-bug reachability bar in `validate_findings.py`.
 
 ### 4. Empirical feasibility (mitigation matrix)
 - `exploit_context.py build --target <binary>` — cache checksec/libc/arch once.
 - `feasibility_profile.py run --build "<gcc {cflags} ...>" --witness "<./w poc>" --context exploit-context.json`
   — rebuild the witness under permissive/distro/hardened/asan, record which still fire, derive the
-  blocked-technique map. See `references/exploit-feasibility.md`.
+  blocked-technique map. See `skills/exploit-development/references/exploit-feasibility.md`.
 
 ### 5. Record the finding (gated)
 - Write the finding with `proof.coverage_proof`/`proof.trace_proof`, and demonstrated-vs-inherent

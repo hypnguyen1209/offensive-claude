@@ -6,7 +6,7 @@ description: Find the canonical fix commit(s) for a CVE across sources, then dif
 
 Locates the fix commit(s) for a CVE across OSV / NVD / GitHub Advisories, de-duplicates them, and
 optionally clones (scope-gated, hardened) to emit `git diff fix^..fix` — the start of n-day patch
-diffing. Feeds `reverse-engineering/references/patch-diffing-protocol.md` and can chain into
+diffing. Feeds `skills/reverse-engineering/references/patch-diffing-protocol.md` and can chain into
 `/engage.crash` for root-cause + exploitability.
 
 ## Usage

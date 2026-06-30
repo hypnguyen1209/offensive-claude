@@ -1,6 +1,6 @@
 # Offensive Security Research Config for Claude Code
 
-A spec-driven offensive security framework for Claude Code — structured engagement workflows based on the Cyber Kill Chain, 31 kill-chain skills (multi-file progressive-disclosure) plus a **discipline layer** (a SessionStart dispatcher + 5 process/discipline skills), 7 collaborative agents, and a shared 47-file vulnerability reference library. Inspired by [GitHub's spec-kit](https://github.com/github/spec-kit) and [obra/superpowers](https://github.com/obra/superpowers).
+A spec-driven offensive security framework for Claude Code — structured engagement workflows based on the Cyber Kill Chain, 31 kill-chain skills (multi-file progressive-disclosure) plus a **discipline layer** (a SessionStart dispatcher + 6 process/discipline skills), 8 collaborative agents, and a shared 47-file vulnerability reference library. Inspired by [GitHub's spec-kit](https://github.com/github/spec-kit), [obra/superpowers](https://github.com/obra/superpowers), and [gadievron/raptor](https://github.com/gadievron/raptor) (crash→exploitability + OSS-repo forensics).
 
 ## Quick Setup
 
@@ -76,6 +76,12 @@ SCOPE  →  RECON  →  WEAPONIZE →  DELIVERY →  EXPLOIT  →  INSTALLATION 
 | `/engage.report` | 8 | Report generation |
 | `/engage.status` | — | Show pipeline status and progress |
 | `/engage.gate` | — | Validate current phase gate |
+| `/engage.crash` | 4 | Crash → root cause (rr) → reachability (gcov/trace) → empirical exploitability verdict |
+| `/engage.cvediff` | 2,4 | Find a CVE's canonical fix commit(s) across sources, then scope-gated diff for root cause |
+| `/engage.scorecard` | — | Calibrate model verdict trust (Wilson-bounded miss-rate) to short-circuit re-validation |
+| `/engage.threatmodel` | 1 | Materialize / lint / drift-check the engagement threat model |
+| `/engage.memory` | — | Recall prior patterns / record confirmed findings (cross-engagement learning) |
+| `/engage.pickup` | — | Resume an engagement from the engine trace (skip completed steps) |
 
 ### Workflow Presets
 
@@ -111,6 +117,7 @@ Each phase transition validates:
 │   ├── using-offensive-claude/    #   SessionStart DISPATCHER — skill-invocation discipline
 │   ├── engagement-flow/           #   process skills: sequence the kill chain,
 │   ├── scope-discipline/          #   no target without authorization,
+│   ├── threat-model-discipline/   #   model the attack surface + detect drift before exploiting,
 │   ├── finding-discipline/        #   no [CONFIRMED] without proof,
 │   ├── opsec-discipline/          #   detection/cleanup/redaction before acting,
 │   ├── writing-offensive-skills/  #   authoring conventions
@@ -119,13 +126,18 @@ Each phase transition validates:
 │   └── references/                # shared 47-file vulnerability pattern library
 ├── .claude-plugin/                # plugin.json + marketplace.json (install as a Claude Code plugin)
 ├── hooks/                         # SessionStart hook that injects the dispatcher every session
-├── agents/                        # 7 collaborative sub-agents (incl. finding-validator)
+├── .devcontainer/                 # reproducible binary-analysis toolchain (rr/gdb/gcov/afl++) for the
+│                                  #   crash→exploitability pipeline; scoped SYS_PTRACE/SYS_PERFMON, not --privileged
+├── agents/                        # 8 collaborative sub-agents (incl. finding-validator, finding-checker)
 ├── engine/                        # bounded, resumable, traceable autopilot runner
 │   ├── engine.py                  #   phase runner (budget + loop-detect + trace + resume; not an LLM)
 │   ├── budget.py  loop_detector.py  tracer.py
+│   ├── rebuttal.py                #   bounded generator↔checker rebuttal loop (default-to-skeptic)
+│   └── model_scorecard.py         #   Wilson-bounded, fail-closed model-verdict trust calibration
 ├── tests/                         # pytest suite for the safety-critical scripts (run: pytest)
 ├── templates/                     # Structured templates per Kill Chain phase
 │   ├── scope/                     #   scope-definition + scope.schema.json/example (machine-readable ROE)
+│   ├── threat-model/              #   threat model (assets/entry-points/boundaries/ATT&CK) + drift baseline
 │   └── ... (recon, weaponize, delivery, exploit, install, c2, actions, report)
 ├── workflows/                     # Kill Chain workflow definitions (YAML) + WORKFLOW-ENGINE.md
 ├── commands/                      # /engage.* orchestration slash commands (incl. memory, pickup)
@@ -145,15 +157,37 @@ The framework's safety controls are **executable, not prose**, and covered by an
 | Control | What it does |
 |---------|--------------|
 | `scope_guard.py` | Enforces the engagement scope (`scope.json`); host parsing matches HTTP clients (userinfo/IPv6/IDN safe), fails closed |
-| `validate_findings.py` | Evidence-grounding + per-class false-positive harness using structured proof signals |
+| `validate_findings.py` | Evidence-grounding + per-class FP harness via structured proof signals; native-bug reachability bar (gcov/trace) + `[EVD-XXX]` citation gate (`evidence_kit.py` re-verifiable evidence) |
+| `safe_subprocess.py` | Hardened exec for untrusted inputs/repos: shell=False, clean env, bounded+fail-closed, UTF-8 decode, `git_safe()` (hooks/prompt/host-config/ext-transport disabled) |
 | `action_guard.py` | 3-state gate (allow / require_approval / block): out-of-scope → block, safe-method policy, per-host circuit breaker |
 | `redact_headers.py` | Masks Authorization/Cookie/API-key/JWT at the data boundary (fail-closed) before traffic reaches the model |
+| `finding-checker` + `engine/rebuttal.py` | Blind artifact-only adversarial checker driving a bounded generator↔checker rebuttal loop (default-to-skeptic; EXHAUSTED/STALLED never accept) |
+| `engine/model_scorecard.py` | Fail-closed model-verdict trust calibration (Wilson 95% upper-bound miss-rate) to short-circuit re-validation only on a proven track record |
 | `engagement-memory/` | Persists confirmed findings as impact-ranked patterns; recalls top-N prior techniques at recon/weaponize |
 | `engine/` | Bounded autopilot: hard step/time budget, loop detection, append-only trace, `--resume`; offensive actions stay operator-gated |
-| `tests/` + CI | `pytest` suite (run `pytest`); GitHub Actions runs it + byte-compile + shellcheck on every push |
+| `tests/` + CI | `pytest` suite (run `pytest`); GitHub Actions runs it + byte-compile (`skills/` + `engine/`) + shellcheck on every push |
 
 All safety code is adversarially red-teamed and regression-tested. See [`TERMS.md`](TERMS.md) for the
 authorization requirement — every request the toolkit sends is the operator's responsibility.
+
+### Crash → Exploitability Pipeline
+
+For native memory-corruption work, a staged-proof pipeline turns "it crashes" into a defensible,
+artefact-backed exploitability verdict — run via `/engage.crash` in the `.devcontainer/` toolchain:
+
+1. **Root cause** — `rr` deterministic record/replay reverse-steps to the corrupting write
+   (`rr_root_cause.sh`, emits a `trace_proof`).
+2. **Reachability** — `gcov` line-hit / function trace proves the vulnerable line actually ran; the
+   harness will not mark a native bug `[CONFIRMED]` without a `coverage_proof`/`trace_proof`.
+3. **Empirical feasibility** — rebuild the crash witness under permissive/distro/hardened/asan
+   profiles and record which still fire (`feasibility_profile.py`); `exploit_context.py` then forbids
+   `/exploit` from using a technique the empirical mitigation map marks blocked.
+4. **Path feasibility** — branch guards → tri-state SAT/UNSAT (`path_conditions.py`, Z3 optional;
+   a tool limit is `null`/manual, never a false "infeasible").
+
+Supporting tools: `evidence_kit.py` (typed, re-verifiable `[EVD-XXX]` evidence), `variant_hunt.py`
+(one finding → all siblings, clustered by root cause), `cve_diff.py` (multi-source fix-commit discovery
+→ scope-gated diff), and the `incident-response` repo-compromise forensics kit.
 
 ## Skill-Invocation Discipline (dispatcher + process skills)
 
@@ -165,7 +199,8 @@ discipline skills come **before** domain skills (the offensive analog of brainst
 |---------------|------|-----------|
 | `engagement-flow` | Sequence the kill chain with quality gates | `/engage.*`, `engine/` |
 | `scope-discipline` | **No target without authorization** | `scope_guard.py`, `action_guard.py` |
-| `finding-discipline` | **No `[CONFIRMED]` without proof** | `validate_findings.py`, `finding-validator` |
+| `threat-model-discipline` | Model the attack surface + detect drift before exploiting | `threatmodel_lint.py`, `/engage.threatmodel` |
+| `finding-discipline` | **No `[CONFIRMED]` without proof** | `validate_findings.py`, `finding-validator`, `finding-checker` |
 | `opsec-discipline` | Decide detection / cleanup / redaction before acting | `redact_headers.py` |
 | `writing-offensive-skills` | Conventions for authoring skills in this repo | — |
 
@@ -197,7 +232,7 @@ Descriptions use `Use when…` triggers so the dispatcher routes to the right sk
 | 13 | privesc-windows | Exploit, Actions | Token abuse, service exploitation, UAC bypass, credential harvesting |
 | 14 | coding-mastery | Weaponize | Python/C/Go/Rust/ASM for exploit dev, scanners, C2, crypto |
 | 15 | crypto-analysis | Recon, Exploit | TLS auditing, hash cracking, RSA attacks, side-channel, implementation review |
-| 16 | incident-response | Report | Memory forensics (Volatility), timeline analysis, IOC extraction, containment |
+| 16 | incident-response | Report | Memory forensics (Volatility), timeline analysis, IOC extraction, containment, repo/OSS-compromise forensics (dangling-commit recovery, GH Archive / Wayback / Events API) |
 | 17 | edr-evasion | Delivery, Install | Hook unhooking, direct/indirect syscalls, AMSI/ETW bypass, sleep masking |
 | 18 | initial-access | Delivery | HTML smuggling, ISO/MOTW bypass, DLL sideload, staged payloads, phishing |
 | 19 | shellcode-dev | Weaponize | PEB walk, API hashing, loaders, PE-to-shellcode, cross-platform |
@@ -214,7 +249,7 @@ Descriptions use `Use when…` triggers so the dispatcher routes to the right sk
 | 30 | macos-offensive | Exploit, Install | TCC/Gatekeeper bypass, keychain, LaunchAgent persistence, ESF evasion *(planned)* |
 | 31 | engagement-memory | Recon, Weaponize, Report | Cross-engagement pattern learning — ranked recall of prior techniques *(support)* |
 
-## Agents (7)
+## Agents (8)
 
 | Agent | Layer | Active Phases | Role |
 |-------|-------|---------------|------|
@@ -225,6 +260,7 @@ Descriptions use `Use when…` triggers so the dispatcher routes to the right sk
 | ai-researcher | Execution | Recon, Weaponize, Exploit | AI/ML security assessment |
 | network-analyst | Analysis | Recon, Delivery, C2, Actions | Protocol analysis, C2 review |
 | finding-validator | Analysis | Exploit, Actions, Report | Adversarial PASS/KILL/DOWNGRADE verdict on findings |
+| finding-checker | Analysis | Exploit, Actions, Report | Blind artifact-only checker driving the bounded generator↔checker rebuttal loop |
 
 Agents collaborate through structured handoffs — planning agents feed execution agents, execution agents feed analysis agents for validation.
 

@@ -26,7 +26,9 @@ jobs:
           python - <<'PY'
           import pathlib, py_compile, sys
           bad = []
-          for p in pathlib.Path("skills").rglob("scripts/**/*.py"):
+          targets = list(pathlib.Path("skills").rglob("scripts/**/*.py")) \
+                  + list(pathlib.Path("engine").rglob("*.py"))
+          for p in targets:
               try:
                   py_compile.compile(str(p), doraise=True)
               except py_compile.PyCompileError as e:
