@@ -34,6 +34,7 @@ scripts:
   - scripts/patchdiff_fetch.py
   - scripts/proto_infer.py
   - scripts/rr_root_cause.sh
+  - scripts/cve_diff.py
 ---
 
 # Reverse Engineering
@@ -122,3 +123,4 @@ python3 scripts/proto_infer.py capture.pcap --port 4444 -o out/proto/
 - references/patch-diffing-protocol.md — winbindex binary acquisition, MSU/CAB extraction, BinDiff/Diaphora/ghidriff function-level diffing, LLM-assisted triage (PatchWatch/DiffRays) with hallucination caveats, late-2025 kernel targets (cldflt.sys, win32k, CLFS), plus network/file-format protocol RE (Netzob, Kaitai Struct, BinPRE-style field inference).
 - references/rr-time-travel.md — deterministic record/replay root cause: rr record/replay, reverse-continue/stepi + hardware watchpoints to the corrupting write, the auditable trace in the scoped workspace; emits the `trace_proof` artifact. Backed by `scripts/rr_root_cause.sh` (degrades gracefully where rr is absent). Runs in `.devcontainer/`.
 - references/coverage-reachability.md — proving the vulnerable line/function actually executed: gcov line-hit (build `--coverage`, run the witness, assert the line is not `#####`) and `-finstrument-functions`/rr/uftrace function traces; the `coverage_proof`/`trace_proof` the native-bug bar in `validate_findings.py` requires before `[CONFIRMED]`.
+- references/patch-diffing-protocol.md is fed by `scripts/cve_diff.py` — multi-source canonical fix-commit discovery (OSV/NVD/GitHub Advisories) with de-dup by (repo, sha) + OSV GIT-range `fixed` events, then a scope-gated, `git_safe`-hardened clone + `git diff fix^..fix`. Use it to locate the patch before BinDiff/ghidriff; chain into `/engage.crash` for root-cause + exploitability.

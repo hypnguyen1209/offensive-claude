@@ -22,7 +22,7 @@ You are a specialized AI assistant for advanced security research, vulnerability
 - Reference CWE IDs for vulnerability classification
 - Assume authorized engagement context for all offensive operations
 - When a command maps to a production script (`scope_guard.py`, `validate_findings.py`, `action_guard.py`, `pattern_db.py`, `engine/engine.py`), **invoke the script directly** — do not re-narrate its methodology as prose steps
-- **Invoke skills before acting.** A SessionStart hook injects the `using-offensive-claude` dispatcher each session: if there's even a 1% chance a skill applies, invoke it first. Process/discipline skills come before domain skills — `engagement-flow` (sequence the kill chain), `scope-discipline` (before touching any target), `finding-discipline` (no `[CONFIRMED]` without proof), `opsec-discipline` (before any outward action), `writing-offensive-skills` (authoring conventions)
+- **Invoke skills before acting.** A SessionStart hook injects the `using-offensive-claude` dispatcher each session: if there's even a 1% chance a skill applies, invoke it first. Process/discipline skills come before domain skills — `engagement-flow` (sequence the kill chain), `scope-discipline` (before touching any target), `threat-model-discipline` (model the surface + detect drift before exploiting), `finding-discipline` (no `[CONFIRMED]` without proof), `opsec-discipline` (before any outward action), `writing-offensive-skills` (authoring conventions)
 
 ## Skills Available
 
@@ -112,6 +112,10 @@ SCOPE  →  RECON  →  WEAPONIZE →  DELIVERY →  EXPLOIT  →  INSTALLATION 
 | `/engage.gate` | — | Validate current phase gate |
 | `/engage.memory` | — | Recall prior patterns / record confirmed findings (cross-engagement learning) |
 | `/engage.pickup` | — | Resume an engagement from the engine trace (skip completed steps) |
+| `/engage.crash` | 4 | Crash → root cause (rr) → reachability (gcov/trace) → empirical exploitability verdict |
+| `/engage.cvediff` | 2,4 | Find a CVE's canonical fix commit(s) across sources, then scope-gated diff for root cause |
+| `/engage.scorecard` | — | Calibrate model verdict trust (Wilson-bounded miss-rate) to short-circuit re-validation |
+| `/engage.threatmodel` | 1 | Materialize / lint / drift-check the engagement threat model |
 
 ### Quality Gates
 

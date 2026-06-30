@@ -252,7 +252,11 @@ def run(cmd: Sequence[str], *,
         proc = subprocess.Popen(
             argv, cwd=cwd, env=env, shell=False,
             stdin=subprocess.PIPE if input_text is not None else None,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, **popen_kwargs)
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            # Decode DETERMINISTICALLY as UTF-8 (what git/most tools emit), not the host locale -
+            # otherwise a non-UTF-8 locale (e.g. cp1258) mojibake-corrupts non-ASCII output and can
+            # even raise mid-read. errors='replace' never crashes on the rare non-UTF-8 byte.
+            encoding="utf-8", errors="replace", **popen_kwargs)
     except FileNotFoundError as exc:
         return Result(argv, 127, "", f"executable not found: {argv[0]!r} ({exc})")
     except OSError as exc:

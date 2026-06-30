@@ -22,6 +22,7 @@ references:
   - references/anti-forensics-detection.md
   - references/cloud-ir.md
   - references/ransomware-esxi-ir.md
+  - references/repo-compromise-forensics.md
 scripts:
   - scripts/triage_collector.py
   - scripts/vol3_triage.py
@@ -30,6 +31,8 @@ scripts:
   - scripts/timestomp_detect.py
   - scripts/cloud_ir_collect.py
   - scripts/ransomware_triage.ps1
+  - scripts/dangling_commit_finder.py
+  - scripts/gharchive_recover.py
 ---
 
 # Incident Response & Digital Forensics
@@ -43,6 +46,7 @@ scripts:
 - Cloud incident response — AWS/Azure/GCP identity-plane attacks and forensic collection
 - Ransomware / extortion response — hypervisor (ESXi) encryption, backup destruction, fast-dwell intrusions
 - Verifying suspect DFIR tooling used as adversary persistence (Velociraptor CVE-2025-6264)
+- Repository-compromise post-mortem — a poisoned public repo / force-pushed malicious commit / deleted PR (recover via dangling commits + GH Archive + Wayback + Events API; see `references/repo-compromise-forensics.md`)
 
 ## Technique Map
 
@@ -113,3 +117,4 @@ powershell -ep bypass -File scripts/ransomware_triage.ps1 -OutDir C:\IR
 - **references/anti-forensics-detection.md** — Timestomping ($SI/$FN + USN cross-validation), log/journal clearing (1102/104, $LogFile gaps), secure-deletion artifacts, VSS recovery, $MFT/$J/$LogFile QuadLink correlation.
 - **references/cloud-ir.md** — NIST SP 800-61r3 / SP 800-201, AWS CloudTrail/GuardDuty/IMDSv2-SSRF, Azure Entra ID token theft & KQL, GCP audit logs, identity-plane containment, automated evidence preservation.
 - **references/ransomware-esxi-ir.md** — Ransomware rapid triage & decision flow, Scattered Spider/UNC3944 ESXi LotL chain, backup destruction, cross-platform builders (LockBit 5.0/DragonForce), containment & negotiation hygiene.
+- **references/repo-compromise-forensics.md** — poisoned public-repo post-mortem from four INDEPENDENT, attacker-uncontrollable sources: dangling/force-pushed commits (`dangling_commit_finder.py`, git fsck via `git_safe`), GH Archive + Wayback CDX + live Events API (`gharchive_recover.py`); hypothesis→verify-at-source (evidence_kit)→adversarial-check→report, attribution-with-confidence, BigQuery kept optional.

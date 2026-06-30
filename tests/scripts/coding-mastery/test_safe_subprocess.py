@@ -203,6 +203,23 @@ def test_regression_allow_binaries_rejects_path_qualified():
             ss.run([bad, "--version"], allow_binaries=["git"])
 
 
+def test_regression_utf8_decode_not_host_locale():
+    # [PR-3b second-pass] child output must decode as UTF-8, not the host locale (cp1258 etc.),
+    # which would mojibake non-ASCII or raise mid-read
+    text = "café АБВ über"   # latin-1 + Cyrillic + umlaut
+    code = "import sys; sys.stdout.buffer.write(%r.encode('utf-8'))" % text
+    res = ss.run([PY, "-c", code])
+    assert res.ok
+    assert res.stdout == text
+
+
+def test_regression_invalid_utf8_does_not_crash():
+    # a rare non-UTF-8 byte must be replaced, never raise (errors='replace')
+    code = "import sys; sys.stdout.buffer.write(b'ok\\xff\\xfetail')"
+    res = ss.run([PY, "-c", code])
+    assert res.ok and "ok" in res.stdout and "tail" in res.stdout
+
+
 def test_regression_allow_binaries_accepts_bare_and_exe(monkeypatch):
     # a bare name (and a .exe variant) still passes the policy gate (then fails to find the fake bin,
     # which is a Result, not a policy raise) - proving the gate didn't over-reject.

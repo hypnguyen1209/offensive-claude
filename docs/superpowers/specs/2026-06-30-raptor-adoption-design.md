@@ -2,8 +2,7 @@
 
 **Date:** 2026-06-30
 **Branch:** `feat/raptor-adoption`
-**Status:** PR-1 + PR-2 done (on main). PR-3a done (crash-pipeline core, on main). PR-3b
-(follow-on commands: cve_diff / model_scorecard / threat-model / OSS-forensics) pending.
+**Status:** PR-1 + PR-2 + PR-3a + PR-3b done (on main). Raptor adoption COMPLETE.
 
 ## Goal
 
@@ -158,6 +157,24 @@ feasibility over-block. All 15 fixed: the trace check now requires a STRUCTURAL 
 (`fn(`/`#N` frame/arrow, comment lines skipped) not English keywords; gcov counts are ASCII-decimal
 only (with `*`/`,` normalized); FORTIFY parsed by regex; the fold prunes on a proven-False
 intermediate. Each regression-locked; the HIGH repros re-verified closed. 412 tests pass.
+
+### PR-3b — Follow-on commands (DONE, on main)
+
+Delivered (+72 tests). Mostly testable on the dev host (no rr/gcov); stdlib only.
+- `engine/model_scorecard.py` — Wilson 95% upper-bound miss-rate per (model, decision_class) over a
+  sqlite store; **fail-CLOSED** auto-trust (small sample / NaN-or-out-of-range threshold / one recent
+  miss => not trusted). `/engage.scorecard`.
+- `skills/reverse-engineering/scripts/cve_diff.py` — multi-source fix-commit discovery (OSV/NVD/GHSA),
+  de-dup by (repo, sha) + OSV GIT-range events; **scope-gated** + `git_safe` clone & `diff fix^..fix`.
+  `/engage.cvediff`.
+- `skills/incident-response/scripts/dangling_commit_finder.py` + `gharchive_recover.py` +
+  `references/repo-compromise-forensics.md` — four independent OSS-repo-compromise evidence sources
+  (dangling commits via `git_safe`, GH Archive, Wayback, Events API; BigQuery optional). Reuse
+  `superpowers:dispatching-parallel-agents` for the collector fan-out.
+- `skills/threat-model-discipline/` + `threatmodel_lint.py` + `templates/threat-model/` — completeness
+  lint + drift detection (new unreviewed surface blocks `/engage.gate`). `/engage.threatmodel`.
+
+**Red-team (two passes):** pass 1 found 7 issues (2 HIGH scorecard threshold fail-opens via NaN/>=1.0 --max-rate, a HIGH threatmodel drift fail-open on a non-list surface, a -separator forensic-report forgery, terminal/CRLF injection, a re.match+$ newline bypass). Pass 2 (post-fix) confirmed closure and found 5 more, INCLUDING a HIGH in safe_subprocess.py itself (PR-1): text=True with no encoding= decoded child output with the HOST LOCALE (cp1258) -> mojibake / UnicodeDecodeError data-loss on non-ASCII git metadata; fixed to deterministic encoding='utf-8', errors='replace' (library-wide). Also: _clean escapes Unicode bidi/zero-width (U+202E) terminal-spoofing; drift item-level type-collision (5150 vs '5150') fails closed; lint placeholder set widened; _check_date ASCII-digits-only + BigQuery uses normalized dates. All 12 fixed, regression-locked, HIGH repros re-verified. 491 tests pass.
 
 ### PR-3 — Crash→exploitability pipeline + commands (high effort, needs devcontainer)
 
