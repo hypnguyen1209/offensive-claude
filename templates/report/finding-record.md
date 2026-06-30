@@ -16,6 +16,7 @@ produces: [report/technical-report.md]
 | **CWE** | CWE-XXX |
 | **CVSS** | X.X |
 | **Severity** | Critical / High / Medium / Low / Info |
+| **Feasibility** | true / false / null (exploit-class findings; null = unknown→manual, never auto-killed) |
 | **ATT&CK ID** | TXXXX |
 | **Status** | Confirmed / Remediated / Accepted / False Positive |
 | **First Seen** | YYYY-MM-DD |

@@ -193,6 +193,7 @@ Agents are loaded from `./agents/` directory:
 - Findings include: severity, CWE, CVSS, exploitation path, PoC, evidence, ATT&CK mapping, remediation
 - **Tag every finding with a confidence tier:** `[CONFIRMED]` (impact demonstrated + grounded in evidence), `[POSSIBLE]` (reachable but class bar not yet met), or `[INFO]` (no impact at current severity). Never present a `[POSSIBLE]` as confirmed.
 - **Evidence bar by class is mandatory** — a status code is not impact. SSRF needs an internal response; IDOR needs another principal's data; RCE needs command output; XSS needs script execution. See `skills/references/finding-evidence-standards.md` and `finding-validation-runtime.md`.
+- **Ground every claim and never name-guess.** Confidence is quote-grounded — High = a direct quote from the artifact, Medium = an explicitly stated assumption, Low = a flagged inference (separate from the impact tier above). If a function/helper is called, read it; a name is not behavior. For exploit-class findings, carry a tri-state `feasibility` (`true`/`false`/`null`) — a tool/solver limit is `null` (manual), never `false`; and record `demonstrated` vs `inherent` severity per the CVSS inherent-impact rule.
 - Code is complete, tested, and production-quality
 - Commands include exact syntax with all required flags
 - Network operations specify protocols, ports, and expected responses

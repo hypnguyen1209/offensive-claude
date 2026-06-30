@@ -29,6 +29,8 @@ high severity, for example:
 
 - a `scope_guard.py` matching flaw that lets an out-of-scope host be classified in-scope,
 - a `validate_findings.py` bug that passes an ungrounded/false-positive finding,
+- a `safe_subprocess.py` flaw that lets a shell string through, leaks the parent environment
+  to a child, or runs git against an untrusted repo without the hook/prompt/config hardening,
 - credential leakage from `http_creds.py` or any script logging a secret in clear text.
 
 Please flag these explicitly so we can prioritize them.

@@ -77,6 +77,13 @@ produces: []
 
 **Impact:** [business impact]
 
+**Confidence of claims** (quote-grounded: HIGH = direct quote from artifact, MEDIUM = stated
+assumption, LOW = flagged inference):
+
+| Claim | Confidence | Grounding / rationale |
+|-------|------------|-----------------------|
+| [e.g. "input reaches the sink unsanitized"] | HIGH/MEDIUM/LOW | [quote, assumption, or inference] |
+
 **Recommendation:** [remediation]
 
 ---

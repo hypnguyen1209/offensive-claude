@@ -37,6 +37,27 @@ Before any finding is recorded or reported:
 
 See `skills/references/finding-validation-runtime.md` for the 7-question gate.
 
+## Read-first, never name-guess
+
+If a function calls another, **read the callee** — do not infer what it does from its name.
+`sanitize()`, `is_safe()`, `validate_input()` are exactly where vulnerabilities hide; a name is a
+claim by the author, not evidence. The same applies to a config key, a decorator, or a CVE title:
+open the thing before you reason about it. An unread dependency in a data-flow claim is a hole.
+
+## Quote-grounded confidence tiers
+
+Every claim in a finding carries a confidence grounded in *what you can quote*, not in how it feels:
+
+- **High** — a **direct quote** from the artifact (the exact source line, the response body, the
+  decompiled instruction) supports the claim.
+- **Medium** — an **explicitly stated assumption** bridges a gap you could not directly observe.
+  State the assumption; do not hide it.
+- **Low** — an **inference** you are flagging as unverified. Acceptable to record, never to report as
+  fact.
+
+This is orthogonal to the `[CONFIRMED]/[POSSIBLE]/[INFO]` tier (which is about *impact*); confidence
+is about *how well-grounded the claim is*. A High-confidence claim of a Low-impact bug is still Low.
+
 ## Red Flags — STOP, downgrade to `[POSSIBLE]`
 
 - "I'm sure it's exploitable" (but haven't shown impact)
@@ -56,5 +77,7 @@ See `skills/references/finding-validation-runtime.md` for the 7-question gate.
 | "Blind RCE counts" | No output / no OOB confirmation = POSSIBLE, not CONFIRMED. |
 | "Severity is obviously Critical" | CVSS must reflect demonstrated impact, not the worst case. |
 | "The validator is overkill here" | Untested findings are how false positives ship. Run it. |
+| "The function is called `sanitize`, so it's safe" | A name is the author's claim, not proof. Read the callee. |
+| "The solver timed out, so it's not exploitable" | A tool limit is `feasibility:null` (manual), never `false`. |
 
 A short list of CONFIRMED findings beats a long list of POSSIBLEs. Killing a false positive is success.

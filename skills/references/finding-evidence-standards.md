@@ -34,6 +34,27 @@ actually gains.
 - Severity claimed must be supported by the evidence (an IDOR exposing only a display name
   is not `Critical`).
 
+### CVSS inherent-impact rule (native memory-corruption)
+
+A confirmed, *attacker-controllable* memory corruption (controlled write, UAF with a reclaimed
+object, OOB write past a guard) carries an **inherent impact ceiling** — usually code execution —
+that exists whether or not you have finished the exploit. Do not cap such a finding at "DoS / crash"
+merely because the only artifact so far is a SIGSEGV. **But** the ceiling is claimed only with two
+things attached, so this refines — never overrides — the "no inflation / a status code is not impact"
+rule above:
+
+1. A **feasibility verdict** (`true` / `false` / `null`) from `finding-validation-runtime.md`. The
+   inherent ceiling is asserted only when feasibility is `true`; on `null` the finding stays
+   `[POSSIBLE]` at the *demonstrated* severity with the ceiling noted as the open question.
+2. Both numbers recorded explicitly: **`demonstrated`** (what the current PoC actually shows) and
+   **`inherent`** (the class ceiling, gated by the feasibility verdict). Never silently report the
+   ceiling as if it were demonstrated.
+
+So a controllable heap overflow with `feasibility:true` is scored on its code-exec ceiling even before
+a full chain; the same crash with `feasibility:null` is `[POSSIBLE]`, demonstrated=DoS, inherent=RCE
+(open). The corruption being controllable is itself an evidence claim — back it, do not assume it from
+the crash address.
+
 ## Do-not-report list (these are not findings on their own)
 
 - Version banners / fingerprinting, missing security headers with no demonstrated impact,

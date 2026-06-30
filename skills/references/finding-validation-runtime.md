@@ -15,6 +15,13 @@ A finding passes only if it survives all seven questions. Default verdict on dou
    (delete it), regardless of severity.
 2. **Grounded?** Does every claim point at a real evidence artifact (request/response,
    log, screenshot) that exists on disk? An ungrounded claim is `REJECTED`.
+2.5. **Authentic at source?** If a claim leans on an *external* source (a CVE entry, a vendor
+   advisory, a GitHub commit/PR, a third-party writeup), is that source re-verifiable — captured
+   with its URL **and** a content hash so it can be re-fetched and re-checked? "Authentic and still
+   true at source" is a separate question from "does the claim follow"; collapsing them lets a stale
+   or fabricated source URL slip through. An external source that cannot be re-verified ⇒
+   **downgrade**, never silent acceptance. (Local first-party evidence from question 2 is exempt;
+   PR-2's `evidence_kit.py` mechanizes the hash/re-fetch.)
 3. **Reachable?** Did *your input* actually reach the sink/behavior (not a WAF page, not a
    default error)?
 4. **Controllable?** Do you control the part that matters (the redirect target, the object
@@ -36,6 +43,23 @@ A finding passes only if it survives all seven questions. Default verdict on dou
   "redirect", encoded "XSS", DNS-only "SSRF"). Drop it.
 - **CHAIN-REQUIRED** — individually `Info`/`Low`, but promotes when combined with another
   finding. Only valid if you record the *complete* chain and demonstrate the end impact.
+
+## The feasibility verdict ladder (native / exploit findings)
+
+For memory-corruption and exploit-class findings, "reachable" is not the same as "exploitable". Carry
+an explicit **feasibility** verdict alongside the tier — and treat *unknown* as a first-class value,
+never as a kill:
+
+| `feasibility` | Meaning | What it does to the finding |
+|---------------|---------|-----------------------------|
+| `true` | Exploitability demonstrated/proven for the claimed primitive (PoC, controlled corruption, satisfiable path) | Supports the inherent-impact severity (see `finding-evidence-standards.md`) |
+| `false` | Proven NOT exploitable as claimed (e.g. a solver shows the path is unsatisfiable, or the mitigation set blocks it) | DOWNGRADE/REJECT the exploit claim; the crash may still be a DoS-only finding |
+| `null` | Unknown — the tool/solver hit a limit, timed out, or the analysis is incomplete | **Falls through to manual analysis. NEVER auto-kills.** Record it as `[POSSIBLE]` with the open question, do not round to `false` |
+
+The cardinal rule: **a solver/coverage/timeout limit is `null`, not `false`.** Tools refute paths;
+they do not get to silently kill a finding because they ran out of budget. Only positive evidence of
+non-exploitability is `false`. (The empirical mitigation-matrix and SMT path-prune that *produce*
+these verdicts land in PR-3 / PR-2; this gate states how to record them.)
 
 ## The identity test (IDOR vs. "missing auth" vs. self-IDOR)
 

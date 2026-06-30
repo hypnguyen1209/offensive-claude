@@ -30,11 +30,17 @@ For each finding:
 - **Description**: What the issue is and why it matters
 - **Exploitation**: How an attacker could exploit this
 - **Remediation**: Specific fix recommendation
-- **Confidence**: High (confirmed) / Medium (likely) / Low (possible but unverified)
+- **Confidence**: grounded in what you can quote — **High** = a direct quote from the code/artifact
+  (the exact line) supports the claim; **Medium** = an explicitly stated assumption bridges a gap you
+  could not directly observe; **Low** = a flagged, unverified inference. Never present an inference as
+  fact. Confidence (how grounded) is separate from severity (how much impact).
 
 ## Rules
 
 - Only report findings with confirmed exploitability — no speculative issues
+- **Read-first, never name-guess.** If code calls a helper (`sanitize`, `is_authorized`), read it
+  before trusting it — that is exactly where the bug or the missing check lives. An unread callee in a
+  data-flow path is a hole, not a safe assumption.
 - Rate severity by actual impact, not pattern severity
 - Distinguish between design concerns and exploitable vulnerabilities
 - Provide exact code fixes, not generic advice
