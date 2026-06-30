@@ -1,6 +1,8 @@
 ---
 name: threat-model-discipline
 description: Use when starting an engagement, before exploitation, or whenever the attack surface changes — build/validate the threat model and detect drift (new unreviewed surface) before advancing
+scripts:
+  - scripts/threatmodel_lint.py
 ---
 
 # Threat-Model Discipline
