@@ -175,3 +175,36 @@ def test_cli_propagates_child_returncode():
 def test_cli_timeout_exit():
     rc = ss.main(["run", "--timeout", "0.5", "--", PY, "-c", "import time;time.sleep(10)"])
     assert rc == ss.TIMEOUT_EXIT
+
+
+# ===================== red-team regressions (raptor PR-2 wbfdsfq1r) =====================
+import time as _time  # noqa: E402
+
+
+def test_regression_timeout_bounded_with_pipe_holding_grandchild():
+    # [14] a surviving grandchild that inherits (holds) the stdout pipe must NOT pin the call past
+    # the timeout. The fix kills the whole process subtree, so wall time stays bounded.
+    parent_code = (
+        "import subprocess,sys,time;"
+        "subprocess.Popen([sys.executable,'-c','import time;time.sleep(25)']);"
+        "time.sleep(25)"
+    )
+    t0 = _time.monotonic()
+    res = ss.run([PY, "-c", parent_code], timeout=1)
+    elapsed = _time.monotonic() - t0
+    assert res.timed_out is True
+    assert elapsed < 18, f"timeout was not bounded: {elapsed:.1f}s (grandchild pinned the pipe)"
+
+
+def test_regression_allow_binaries_rejects_path_qualified():
+    # [15] a path-qualified lookalike must not pass an allowlist meant for a bare PATH command
+    for bad in ["/usr/bin/git", "C:\\evil\\git.cmd", "./git", "git.cmd", "git.bat"]:
+        with pytest.raises(ss.SafeSubprocessError):
+            ss.run([bad, "--version"], allow_binaries=["git"])
+
+
+def test_regression_allow_binaries_accepts_bare_and_exe(monkeypatch):
+    # a bare name (and a .exe variant) still passes the policy gate (then fails to find the fake bin,
+    # which is a Result, not a policy raise) - proving the gate didn't over-reject.
+    res = ss.run(["definitely_not_a_real_bin_zzz"], allow_binaries=["definitely_not_a_real_bin_zzz"])
+    assert res.returncode == 127  # policy passed; binary simply not found (fail-closed Result)

@@ -12,6 +12,13 @@
  *   Linux/Windows:     frida -p <pid> -l frida_universal.js
  *   Trace a native fn: edit TRACE_EXPORTS below.
  *
+ *   Structured runtime evidence (feeds merge_runtime_evidence.py):
+ *     set JSONL_MODE=true below (or `frida ... -e "var RUNTIME_JSONL=true"`), then capture stdout:
+ *       frida -p <pid> -l frida_universal.js -o events.jsonl
+ *     Each hooked call/dlopen is emitted as one JSON object per line:
+ *       {"type":"runtime","event":"call","fn":"strcmp","args":["a","b"],"module":null,"ts":...}
+ *     merge_runtime_evidence.py then sets proof.runtime_sink_executed on findings whose sink ran.
+ *
  * Tested with frida 17.x. Java hooks no-op on non-JVM targets (wrapped in availability checks).
  */
 
@@ -20,7 +27,27 @@
 // ----- configurable: native exports to trace (name or "module!name") -----
 const TRACE_EXPORTS = ['strcmp', 'memcmp'];   // add target-specific functions here
 
+// ----- configurable: emit machine-readable JSONL events for the evidence merge step -----
+const JSONL_MODE = false;   // flip to true, or define RUNTIME_JSONL=true at load, for events.jsonl
+
+function jsonlEnabled() {
+  return (typeof RUNTIME_JSONL !== 'undefined') ? !!RUNTIME_JSONL : JSONL_MODE;
+}
+
 function log(tag, msg) { console.log('[' + tag + '] ' + msg); }
+
+// Structured runtime event. console.log => one JSON line (capture with `-o events.jsonl`);
+// send() => the structured channel for a Python frida driver. Non-JSON log lines are ignored by
+// merge_runtime_evidence.py, so leaving human logs on is harmless.
+function emit(evt) {
+  if (!jsonlEnabled()) return;
+  try {
+    evt.type = 'runtime';
+    evt.ts = Date.now();
+    console.log(JSON.stringify(evt));
+    if (typeof send === 'function') { send(evt); }
+  } catch (e) { /* never let evidence emission break a hook */ }
+}
 
 /* ---------------------------------------------------------------------------
  * 1. Anti-anti-debug (native, all platforms)
@@ -159,9 +186,10 @@ function traceExports() {
     Interceptor.attach(addr, {
       onEnter(args) {
         let a0 = '', a1 = '';
-        try { a0 = args[0].readUtf8String(); } catch (e) { a0 = args[0]; }
-        try { a1 = args[1].readUtf8String(); } catch (e) { a1 = args[1]; }
+        try { a0 = args[0].readUtf8String(); } catch (e) { a0 = '' + args[0]; }
+        try { a1 = args[1].readUtf8String(); } catch (e) { a1 = '' + args[1]; }
         log('trace', name + '(' + a0 + ', ' + a1 + ')');
+        emit({ event: 'call', fn: name, module: mod, args: [a0, a1] });
       },
       onLeave(retval) { log('trace', name + ' -> ' + retval); }
     });
@@ -174,7 +202,8 @@ function traceExports() {
   if (dlopen) {
     Interceptor.attach(dlopen, {
       onEnter(args) {
-        try { log('dlopen', args[0].readUtf8String()); } catch (e) {}
+        try { const p = args[0].readUtf8String(); log('dlopen', p); emit({ event: 'dlopen', path: p }); }
+        catch (e) {}
       }
     });
   }

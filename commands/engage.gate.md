@@ -24,14 +24,23 @@ These executable checks back the gate — a phase cannot pass if they fail:
 python skills/coding-mastery/scripts/_lib/scope_guard.py check <target> \
     --scope .engage/scope/scope.json
 
+# Evidence must be re-verifiable: re-hash every captured artifact before trusting a citation.
+# Exit 1 if any item is FAILED/UNVERIFIED (tampered, missing, or never hashed).
+python skills/vulnerability-analysis/scripts/evidence_kit.py verify \
+    --store .engage/evidence/evidence.json
+
 # Findings must be grounded in evidence and survive per-class kill-signals.
-# Exit 1 if any finding is REJECTED (ungrounded / false-positive).
+# --evidence-store makes any [EVD-XXX] a finding cites have to EXIST and be VERIFIED, else REJECTED.
+# --strict makes hedge / uncited lint on a CONFIRMED finding also fail the gate.
+# Exit 1 if any finding is REJECTED (ungrounded / false-positive / dangling-or-unverified citation).
 python skills/vulnerability-analysis/scripts/validate_findings.py \
-    --findings .engage/exploit/findings.json --evidence .engage/evidence
+    --findings .engage/exploit/findings.json --evidence .engage/evidence \
+    --evidence-store .engage/evidence/evidence.json --strict
 ```
 
 A finding only passes the gate if `validate_findings.py` tiers it **CONFIRMED** (or a
-documented **CHAIN-REQUIRED**). `POSSIBLE`/`REJECTED` findings do not advance. See
+documented **CHAIN-REQUIRED**). `POSSIBLE`/`REJECTED` findings do not advance. **No finding advances
+past the exploit gate while it cites UNVERIFIED evidence** — run `evidence_kit.py verify` first. See
 `skills/references/finding-validation-runtime.md` and `finding-evidence-standards.md`.
 
 ### Artifact Validation

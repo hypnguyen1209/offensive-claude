@@ -80,6 +80,7 @@ Agents are loaded from `./agents/` directory:
 | ai-researcher | AI/ML architecture, training, and research |
 | network-analyst | Protocol analysis and network defense |
 | finding-validator | Adversarial exploitability judge — PASS/KILL/DOWNGRADE verdicts on findings |
+| finding-checker | Blind adversarial checker — sees only the artifact, drives the bounded rebuttal loop |
 
 ## Engagement Workflow — Cyber Kill Chain
 
@@ -187,6 +188,7 @@ Agents are loaded from `./agents/` directory:
 | ai-researcher | Execution | 1,2,4 | AI/ML security assessment |
 | network-analyst | Analysis | 1,3,6,7 | Protocol analysis, C2 review |
 | finding-validator | Analysis | 4,7,8 | Adversarial exploitability verdict (PASS/KILL/DOWNGRADE) |
+| finding-checker | Analysis | 4,7,8 | Blind checker (artifact-only) feeding the bounded generator↔checker rebuttal loop (`engine/rebuttal.py`) |
 
 ## Output Standards
 

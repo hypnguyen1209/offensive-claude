@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-30
 **Branch:** `feat/raptor-adoption`
-**Status:** PR-1 approved — in implementation
+**Status:** PR-1 done (merged to main). PR-2 done (on `feat/raptor-adoption`). PR-3 pending.
 
 ## Goal
 
@@ -91,14 +91,43 @@ Pure-additive. One new code file (tested); the rest are documentation extensions
 8. **`CLAUDE.md`** — extend the confidence-tier bullet to reference the quote-grounded tiers and the
    feasibility ladder (one-line cross-reference, no behavior change).
 
-### PR-2 — Generator+checker + evidence grounding (med effort, later)
+### PR-2 — Generator+checker + evidence grounding (DONE)
 
-`agents/finding-checker.md` (sees only the artifact) + rebuttal loop as structured state in
-`engine/loop_detector.py`; hedge/evidence-count linter + `[EVD-XXX]` citation linter in
-`validate_findings.py`; `evidence_kit.py` (stdlib `EvidenceStore.verify_all()`); `variant_hunt.py`;
-`path_conditions.py` (advisory tri-state Z3 prune, null = fall through); Frida `--jsonl` +
-`merge_runtime_evidence.py`. Each script ships with tests; wire the EVD-verified gate into
-`/engage.gate`.
+Delivered on `feat/raptor-adoption` (+72 tests, total 319 passed / 5 z3-skipped):
+- `agents/finding-checker.md` — blind checker (artifact-only), distinct from finding-validator.
+- `engine/rebuttal.py` — bounded generator↔checker loop as structured state. **Refinement:** a
+  separate module that *composes* `LoopDetector` (stall detection) rather than overloading
+  `loop_detector.py`, whose single responsibility is rabbit-hole detection.
+- `validate_findings.py` — hedge linter (advisory, never drives a tier) + `[EVD-XXX]` citation
+  grounding (`--evidence-store`): a dangling or non-VERIFIED citation ⇒ REJECTED (fail-closed);
+  `--strict` makes hedge/uncited lint on a CONFIRMED finding fail. Backward compatible.
+- `evidence_kit.py` — stdlib `EvidenceStore.verify_all()`; local-snapshot integrity re-hash by
+  default, injectable `fetcher` for source re-fetch. **Refinement:** placed in
+  `skills/vulnerability-analysis/scripts/` (next to the gate consumer) not incident-response, to
+  avoid a cross-skill import; IR/PR-3 can `sys.path` it like `engine.py` does.
+- `variant_hunt.py` + `references/variant-hunting.md` — seed→tree-sweep→qualify→cluster-by-root-cause;
+  FPs retained, excluded from recommendation.
+- `path_conditions.py` (+ `taint_trace.py` guard emission) — branch guards → tri-state feasibility;
+  `false` only on a sound UNSAT, a solver/parse limit is `null` (manual), never `false`.
+- `frida_universal.js` JSONL `emit()` + `merge_runtime_evidence.py` — runtime sink-executed →
+  `proof.runtime_sink_executed` (reachability booster, not a class-confirm).
+- Wired into `/engage.gate` (evidence_kit verify + validate_findings `--evidence-store --strict`);
+  finding-validator Q3 notes the runtime artifact.
+
+**Stale-analysis correction (carried from PR-1):** the workflow's file-existence assumptions were
+based on a snapshot; every PR-2 touch-point was re-read against the live tree before editing.
+
+**Adversarial verification (two red-team passes, the repo discipline):** pass 1 confirmed 16
+fail-open/bypass/unsoundness/crash issues across all components (each with a runnable repro +
+independent verification); pass 2 — run after the fixes — confirmed the 16 were closed and found 8
+more, INCLUDING a HIGH bypass the first round of fixes introduced (a case-fold identity mismatch
+between evidence_kit and validate_findings) and an incomplete HIGH fix (variant_hunt suppressing a
+tainted var on a sanitizer's RHS). All 24 are fixed, each locked by a regression test, both HIGH
+repros re-verified closed. evidence_kit is now the single source of truth on id case (case-insensitive
+dedup) and never trusts a loaded status; variant_hunt binds sanitization to the LHS assignment target;
+safe_subprocess kills the whole process subtree (POSIX killpg / Windows Job Object KILL_ON_JOB_CLOSE,
+best-effort with taskkill fallback) so a timeout is bounded even with a pipe-holding grandchild.
+363 tests pass.
 
 ### PR-3 — Crash→exploitability pipeline + commands (high effort, needs devcontainer)
 

@@ -29,7 +29,10 @@ and does the evidence actually show what the finding claims?*
 
 1. **In scope?** Confirm the target is in `scope.json` (`scope_guard.py check`). Out-of-scope ⇒ KILL.
 2. **Grounded?** Open every cited evidence artifact. If a claim has no backing artifact ⇒ KILL.
-3. **Reachable?** Did the input actually reach the sink (not a WAF/error page)?
+3. **Reachable?** Did the input actually reach the sink (not a WAF/error page)? A
+   `proof.runtime_sink_executed:true` set by `merge_runtime_evidence.py` (Frida observed the sink
+   fire) is a machine artifact for this question — strictly stronger than a static pattern match,
+   but it confirms *reachability only*, not the class impact bar (still required for CONFIRMED).
 4. **Controllable?** Does the attacker control the part that matters?
 5. **Impactful?** Does the evidence meet the per-class bar in `finding-evidence-standards.md`?
 6. **Default deployment?** Stock install, or a non-default misconfig? Note it; it caps severity.

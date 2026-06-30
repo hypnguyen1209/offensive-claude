@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import signal
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -38,6 +39,7 @@ from typing import Optional, Sequence
 DEFAULT_TIMEOUT = 60
 TIMEOUT_EXIT = 124  # conventional (GNU coreutils `timeout`)
 POLICY_EXIT = 2
+DRAIN_TIMEOUT = 5   # hard secondary deadline so a surviving descendant cannot pin the call forever
 
 # Vars an interpreter/loader genuinely needs to start. Everything else must be allowlisted.
 # Deliberately small: no secrets, no creds, no proxy/auth vars unless the caller opts in.
@@ -46,6 +48,87 @@ if os.name == "nt":
                           "TEMP", "TMP", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE")
 else:
     _SAFE_DEFAULT_VARS = ("PATH", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TERM")
+
+# Windows process-tree containment. A Job Object with KILL_ON_JOB_CLOSE kills the WHOLE tree when we
+# close the handle - the equivalent of POSIX killpg, and (unlike `taskkill /T <child-pid>`) robust to
+# a child that exits and re-parents its descendants. All ctypes here is best-effort: any failure
+# falls back to taskkill /T (still bounded). POSIX uses start_new_session + killpg (see run/_kill_tree).
+_WIN = os.name == "nt"
+if _WIN:
+    import ctypes
+    from ctypes import wintypes
+
+    _k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
+    _JobObjectExtendedLimitInformation = 9
+    _k32.CreateJobObjectW.restype = wintypes.HANDLE
+    _k32.CreateJobObjectW.argtypes = [wintypes.LPVOID, wintypes.LPCWSTR]
+    _k32.SetInformationJobObject.restype = wintypes.BOOL
+    _k32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD]
+    _k32.AssignProcessToJobObject.restype = wintypes.BOOL
+    _k32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+    _k32.CloseHandle.restype = wintypes.BOOL
+    _k32.CloseHandle.argtypes = [wintypes.HANDLE]
+
+    class _JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+        _fields_ = [("PerProcessUserTimeLimit", wintypes.LARGE_INTEGER),
+                    ("PerJobUserTimeLimit", wintypes.LARGE_INTEGER),
+                    ("LimitFlags", wintypes.DWORD),
+                    ("MinimumWorkingSetSize", ctypes.c_size_t),
+                    ("MaximumWorkingSetSize", ctypes.c_size_t),
+                    ("ActiveProcessLimit", wintypes.DWORD),
+                    ("Affinity", ctypes.c_void_p),
+                    ("PriorityClass", wintypes.DWORD),
+                    ("SchedulingClass", wintypes.DWORD)]
+
+    class _IO_COUNTERS(ctypes.Structure):
+        _fields_ = [("ReadOperationCount", ctypes.c_ulonglong),
+                    ("WriteOperationCount", ctypes.c_ulonglong),
+                    ("OtherOperationCount", ctypes.c_ulonglong),
+                    ("ReadTransferCount", ctypes.c_ulonglong),
+                    ("WriteTransferCount", ctypes.c_ulonglong),
+                    ("OtherTransferCount", ctypes.c_ulonglong)]
+
+    class _JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+        _fields_ = [("BasicLimitInformation", _JOBOBJECT_BASIC_LIMIT_INFORMATION),
+                    ("IoInfo", _IO_COUNTERS),
+                    ("ProcessMemoryLimit", ctypes.c_size_t),
+                    ("JobMemoryLimit", ctypes.c_size_t),
+                    ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                    ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+
+def _assign_to_job(proc):
+    """Windows only: place the child in a kill-on-close Job Object. Returns the job handle or None
+    (None => caller relies on taskkill /T). Best-effort; never raises."""
+    if not _WIN:
+        return None
+    try:
+        job = _k32.CreateJobObjectW(None, None)
+        if not job:
+            return None
+        info = _JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+        info.BasicLimitInformation.LimitFlags = _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        if not _k32.SetInformationJobObject(job, _JobObjectExtendedLimitInformation,
+                                            ctypes.byref(info), ctypes.sizeof(info)):
+            _k32.CloseHandle(job)
+            return None
+        if not _k32.AssignProcessToJobObject(job, int(proc._handle)):
+            _k32.CloseHandle(job)
+            return None
+        return job
+    except Exception:
+        return None
+
+
+def _close_job(job):
+    """Closing the last handle to a KILL_ON_JOB_CLOSE job terminates every process still in it."""
+    if job is None:
+        return
+    try:
+        _k32.CloseHandle(job)
+    except Exception:
+        pass
 
 
 class SafeSubprocessError(Exception):
@@ -113,6 +196,22 @@ def _validate_argv(cmd) -> list:
 
 
 # --------------------------------------------------------------------------- run
+def _kill_tree(proc) -> None:
+    """Terminate the child AND its descendants. POSIX: kill the session group; Windows: taskkill /T.
+    Best-effort and bounded - falls back to killing just the child, never raises."""
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                           capture_output=True, timeout=DRAIN_TIMEOUT)
+        else:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
+
 def run(cmd: Sequence[str], *,
         cwd: Optional[str] = None,
         env_allow: Optional[Sequence[str]] = None,
@@ -126,42 +225,55 @@ def run(cmd: Sequence[str], *,
     on a policy violation. A timeout kills the child and returns timed_out=True."""
     argv = _validate_argv(cmd)
     if allow_binaries is not None:
-        base = os.path.basename(argv[0]).lower()
-        for ext in (".exe", ".cmd", ".bat", ".com"):
-            if base.endswith(ext):
-                base = base[: -len(ext)]
-                break
+        cmd0 = argv[0]
+        # an allowlist means "the trusted program found on PATH" - a path-qualified argv[0]
+        # (C:\evil\git.cmd, /tmp/git) would run an attacker-plantable lookalike, so reject it.
+        if "/" in cmd0 or "\\" in cmd0 or (os.name == "nt" and ":" in cmd0):
+            raise SafeSubprocessError(
+                f"allow_binaries requires a bare command name (no path/drive), got {cmd0!r}")
+        base = cmd0.lower()
+        if base.endswith(".exe"):        # strip only .exe; .cmd/.bat/.com select different launchers
+            base = base[:-4]
         allowed = {b.lower() for b in allow_binaries}
         if base not in allowed:
             raise SafeSubprocessError(
                 f"binary {argv[0]!r} not in allow_binaries {sorted(allowed)}")
     env = build_env(env_allow, env_extra)
+    # Run in its own process group/session so a timeout can kill the WHOLE subtree. A plain
+    # subprocess.run(timeout=) only kills the direct child, then blocks on the captured pipes that a
+    # surviving grandchild (e.g. git's network helper / fsmonitor) still holds open - that is the
+    # fail-open hang this guards against.
+    popen_kwargs: dict = {}
+    if os.name == "nt":
+        popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        popen_kwargs["start_new_session"] = True
     try:
-        proc = subprocess.run(
-            argv,
-            cwd=cwd,
-            env=env,
-            shell=False,                 # NEVER True
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            input=input_text,
-            check=False,                 # non-zero exit is data, surfaced in Result
-        )
-    except subprocess.TimeoutExpired as exc:
-        out = exc.stdout or ""
-        err = exc.stderr or ""
-        if isinstance(out, bytes):
-            out = out.decode("utf-8", "replace")
-        if isinstance(err, bytes):
-            err = err.decode("utf-8", "replace")
-        return Result(argv, None, out, err, timed_out=True)
+        proc = subprocess.Popen(
+            argv, cwd=cwd, env=env, shell=False,
+            stdin=subprocess.PIPE if input_text is not None else None,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, **popen_kwargs)
     except FileNotFoundError as exc:
-        # Missing binary is fail-closed: a Result with a non-zero code + reason, never a hang.
         return Result(argv, 127, "", f"executable not found: {argv[0]!r} ({exc})")
     except OSError as exc:
         return Result(argv, 126, "", f"could not execute {argv[0]!r}: {exc}")
-    return Result(argv, proc.returncode, proc.stdout or "", proc.stderr or "")
+    job = _assign_to_job(proc)        # Windows: kill-on-close job for the whole tree (None on POSIX)
+    try:
+        try:
+            out, err = proc.communicate(input=input_text, timeout=timeout)
+            return Result(argv, proc.returncode, out or "", err or "")
+        except subprocess.TimeoutExpired:
+            _kill_tree(proc)                                  # kill the subtree, not just the child
+            try:
+                out, err = proc.communicate(timeout=DRAIN_TIMEOUT)   # bounded drain; never re-block forever
+            except (subprocess.TimeoutExpired, OSError):
+                out, err = "", ""                             # a survivor still holds the pipe -> abandon
+            return Result(argv, None, out or "", err or "", timed_out=True)
+        except OSError as exc:
+            _kill_tree(proc)
+            return Result(argv, 126, "", f"io error running {argv[0]!r}: {exc}")
+    finally:
+        _close_job(job)               # KILL_ON_JOB_CLOSE: any straggler the taskkill missed dies now
 
 
 # --------------------------------------------------------------------------- git
