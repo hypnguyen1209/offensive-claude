@@ -55,6 +55,22 @@ a full chain; the same crash with `feasibility:null` is `[POSSIBLE]`, demonstrat
 (open). The corruption being controllable is itself an evidence claim — back it, do not assume it from
 the crash address.
 
+### Reachability artifact (required for a native `[CONFIRMED]`)
+
+For a native memory-corruption finding (the `NATIVE_MEMORY_CWES` set in `validate_findings.py`), a
+crash "on paper" is **not** demonstrated reachability — the vulnerable line may never execute on the
+path you think. To reach `[CONFIRMED]` the finding must carry a machine-checkable reachability proof,
+and the harness enforces it:
+
+- `proof.coverage_proof = {gcov: <path>, line: <n>}` — a `gcov` file where the vulnerable line `n`
+  has a non-`#####` (executed) hit count; **or**
+- `proof.trace_proof = {log: <path>, function: <name>}` — a function-trace log (e.g. from
+  `-finstrument-functions` or rr) in which the vulnerable function actually appears.
+
+Without one, the finding is `[POSSIBLE]` regardless of how obvious the bug looks. Produce-side recipe:
+`skills/reverse-engineering/references/coverage-reachability.md`. This *upgrades* the proof bar; the
+demonstrated-vs-inherent severity + feasibility verdict above still apply on top of it.
+
 ## Do-not-report list (these are not findings on their own)
 
 - Version banners / fingerprinting, missing security headers with no demonstrated impact,

@@ -2,7 +2,8 @@
 
 **Date:** 2026-06-30
 **Branch:** `feat/raptor-adoption`
-**Status:** PR-1 done (merged to main). PR-2 done (on `feat/raptor-adoption`). PR-3 pending.
+**Status:** PR-1 + PR-2 done (on main). PR-3a done (crash-pipeline core, on main). PR-3b
+(follow-on commands: cve_diff / model_scorecard / threat-model / OSS-forensics) pending.
 
 ## Goal
 
@@ -128,6 +129,35 @@ dedup) and never trusts a loaded status; variant_hunt binds sanitization to the 
 safe_subprocess kills the whole process subtree (POSIX killpg / Windows Job Object KILL_ON_JOB_CLOSE,
 best-effort with taskkill fallback) so a timeout is bounded even with a pipe-holding grandchild.
 363 tests pass.
+
+### PR-3a — Crash→exploitability pipeline core (DONE, on main)
+
+Delivered (+44 tests, total 407 passed). The Linux-runtime pieces (rr/gcov/build-under-CFLAGS) are
+authored to run in `.devcontainer/`; everything testable on the dev host (harness + data models +
+gate verdicts) is unit-tested with injectable runners.
+- `validate_findings.py` — **native memory-corruption reachability bar**: a `NATIVE_MEMORY_CWES`
+  finding stays `[POSSIBLE]` without a machine-checked `coverage_proof` (gcov line-hit, positive-int
+  count) or `trace_proof` (function in an execution/call context). Closes the prior auto-CONFIRM.
+- `exploit_context.py` — cached checksec/libc + `assert_allowed` gate; **fail-CLOSED** on undetermined
+  hardening; empirical map overrides static; string/non-dict inputs handled.
+- `feasibility_profile.py` — empirical mitigation matrix (permissive/distro/hardened/asan); strictest
+  *firing* profile sets the realistic context; `fires=None` (build failed) ≠ `False` and folds
+  stricter-unproven mitigations (block more); duplicate names aggregate fired-wins.
+- `coverage-reachability.md`, `rr-time-travel.md`, `exploit-feasibility.md`; `rr_root_cause.sh`
+  (sources `lib.sh`, degrades gracefully where rr is absent); `.devcontainer/` (scoped
+  `SYS_PTRACE`/`SYS_PERFMON`, **never `--privileged`, no `~/.claude` mount**); `commands/engage.crash.md`;
+  router registration in both SKILL.md; `finding-evidence-standards.md` reachability-artifact line.
+
+**Red-team (two passes, the discipline):** pass 1 found 10 fail-open/unsoundness/crash issues in the
+new gates (forged gcov count tokens, `count=0`/`=====`, trace name in a comment, `exploit_context`
+failing OPEN on unknown hardening, `feasibility` treating `fires=None` as `False`, …). Pass 2 — after
+the fixes — confirmed those closed and found 5 more, INCLUDING a HIGH the first trace fix introduced
+(a substring keyword check matched "never **call**ed"/"re**call**"/"**ENTER**PRISE"), a `17*` gcov
+over-reject, a non-ASCII Unicode-digit count fail-open, a FORTIFY parse fail-open, and a non-monotonic
+feasibility over-block. All 15 fixed: the trace check now requires a STRUCTURAL call record
+(`fn(`/`#N` frame/arrow, comment lines skipped) not English keywords; gcov counts are ASCII-decimal
+only (with `*`/`,` normalized); FORTIFY parsed by regex; the fold prunes on a proven-False
+intermediate. Each regression-locked; the HIGH repros re-verified closed. 412 tests pass.
 
 ### PR-3 — Crash→exploitability pipeline + commands (high effort, needs devcontainer)
 

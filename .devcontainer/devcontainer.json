@@ -1,0 +1,24 @@
+{
+  "name": "offensive-claude binary-analysis",
+  "build": { "dockerfile": "Dockerfile" },
+
+  // Scoped capabilities ONLY - rr/gdb/perf need ptrace + perfmon, NOT full privilege.
+  // Deliberately NOT "--privileged" and we do NOT bind-mount the host ~/.claude (exfil risk):
+  // engagement state lives in the project workspace, which is the single mount.
+  "capAdd": ["SYS_PTRACE", "SYS_PERFMON"],
+  "securityOpt": ["seccomp=unconfined"],
+  "runArgs": ["--init"],
+
+  "workspaceFolder": "/work",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/work,type=bind,consistency=cached",
+
+  // rr requires a low perf_event_paranoid; set it inside the container's view at start.
+  "postCreateCommand": "sysctl -w kernel.perf_event_paranoid=1 2>/dev/null || echo 'note: set kernel.perf_event_paranoid=1 on the host for rr'; python3 -m pytest -q tests/ || true",
+
+  "remoteUser": "researcher",
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python", "ms-vscode.cpptools"]
+    }
+  }
+}

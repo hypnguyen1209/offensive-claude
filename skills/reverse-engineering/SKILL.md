@@ -22,6 +22,8 @@ references:
   - references/deobfuscation.md
   - references/firmware-uefi.md
   - references/patch-diffing-protocol.md
+  - references/rr-time-travel.md
+  - references/coverage-reachability.md
 scripts:
   - scripts/triage.py
   - scripts/frida_universal.js
@@ -31,6 +33,7 @@ scripts:
   - scripts/uefi_triage.py
   - scripts/patchdiff_fetch.py
   - scripts/proto_infer.py
+  - scripts/rr_root_cause.sh
 ---
 
 # Reverse Engineering
@@ -117,3 +120,5 @@ python3 scripts/proto_infer.py capture.pcap --port 4444 -o out/proto/
 - references/deobfuscation.md — String & API-hash decryption via Unicorn emulation, OLLVM control-flow-flattening de-flattening (dispatcher recovery, Triton backward slicing à la LummaC2), MBA simplification, and VM-protector devirtualization (NoVmp/VTIL, Titan, Triton lifting) for VMProtect 3.x / Themida.
 - references/firmware-uefi.md — binwalk/unblob carving, squashfs/JFFS2 extraction, QEMU+afl emulation, UEFI volume/DXE/PEI parsing (UEFITool/chipsec), SMM callout & NVRAM variable surface, and Secure Boot bypass research with the verified 2024-2025 chain: LogoFAIL (CVE-2023-40238), PKfail (CVE-2024-8105), CVE-2024-7344, BlackLotus/Bootkitty context.
 - references/patch-diffing-protocol.md — winbindex binary acquisition, MSU/CAB extraction, BinDiff/Diaphora/ghidriff function-level diffing, LLM-assisted triage (PatchWatch/DiffRays) with hallucination caveats, late-2025 kernel targets (cldflt.sys, win32k, CLFS), plus network/file-format protocol RE (Netzob, Kaitai Struct, BinPRE-style field inference).
+- references/rr-time-travel.md — deterministic record/replay root cause: rr record/replay, reverse-continue/stepi + hardware watchpoints to the corrupting write, the auditable trace in the scoped workspace; emits the `trace_proof` artifact. Backed by `scripts/rr_root_cause.sh` (degrades gracefully where rr is absent). Runs in `.devcontainer/`.
+- references/coverage-reachability.md — proving the vulnerable line/function actually executed: gcov line-hit (build `--coverage`, run the witness, assert the line is not `#####`) and `-finstrument-functions`/rr/uftrace function traces; the `coverage_proof`/`trace_proof` the native-bug bar in `validate_findings.py` requires before `[CONFIRMED]`.
