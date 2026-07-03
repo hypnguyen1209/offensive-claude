@@ -1,14 +1,14 @@
 {
-  "model": "glm-5.1",
+  "model": "glm-5.2[1m]",
   "theme": "dark",
   "skipDangerousModePermissionPrompt": true,
   "alwaysThinkingEnabled": true,
   "env": {
     "ANTHROPIC_AUTH_TOKEN": "sk-XXXX",
     "ANTHROPIC_BASE_URL": "http://XXXX",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-5.1",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-5",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-4.7",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-5.2",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-5.1",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-5",
     "ENABLE_TOOL_SEARCH": "1",
     "DISABLE_NON_ESSENTIAL_MODEL_CALLS": "1",
     "DISABLE_TELEMETRY": "1",
@@ -17,7 +17,8 @@
     "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "1",
     "CLAUDE_CODE_NO_FLICKER": "1",
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
-    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0"
+    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
+    "CLAUDE_CODE_STOP_HOOK_BLOCK_CAP": "0"
   },
   "permissions": {
     "allow": [
@@ -34,7 +35,6 @@
       "TodoWrite(*)",
       "mcp__ida-multi-mcp__*",
       "mcp__jadx-mcp-server__*",
-      "mcp__mitm-search__*",
       "mcp__burp__*",
       "mcp__caido__*"
     ],
