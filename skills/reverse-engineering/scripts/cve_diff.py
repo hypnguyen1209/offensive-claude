@@ -112,7 +112,7 @@ def _http_get(url: str, timeout: float = 20) -> Optional[dict]:
 
 SOURCE_URLS = {
     "osv": "https://api.osv.dev/v1/vulns/{cve}",
-    "nvd": "https://services.nvd.nist.gov/rest/json/cves/2.0?cveId={cve}",
+    "nvd": "https://services.nvd.nist.gov/rest/json/cves/2.0?cveIds={cve}",
     "ghsa": "https://api.github.com/advisories?cve_id={cve}",
 }
 
