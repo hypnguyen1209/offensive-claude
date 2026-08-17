@@ -71,6 +71,13 @@ Highest fit to the plugin's identity. Pure-additive except the two hook/agent wi
    collection), quoted-command-word and `sh -c`/`bash -c` wrapper bypasses. Returns a structured
    verdict `{destructive: bool, reasons: [...], matched: [...]}` — never the raw secret/arg values in
    logs. Cite the GHSA fixes in comments.
+   - **Red-team pass hardening:** an inline adversarial pass found runner-prefix and eval bypasses
+     (`exec rm -rf /`, `sudo rm -rf /`, `timeout 5 rm -rf /`, `env A=b rm -rf /`, `xargs -0 rm -rf`,
+     `sudo sh -c 'rm -rf /'`, `eval "$(printf 'rm -rf /')"`) that all classified *safe*. Fixed by
+     `_strip_runners()` (drops a runner + its flags/env-assigns/numeric args and re-classifies the
+     wrapped **token list** — never re-stringified, so a quoted `sh -c` payload survives) and an
+     `eval` branch (re-scan the arg + flag eval-of-substitution for manual review). Benign runners
+     (`sudo apt update`, `timeout 5 curl …`, `env PATH=/x ls`) stay unflagged. Regression-tested.
    - **Wire into `action_guard.py`:** the existing "mutating verb" classifier calls `cmd_parser` so a
      `sh -c 'rm -rf /'` or `$(...)`-wrapped destructive command is caught, not just a bare `rm`. Keep
      backward-compatible (only tightens; a previously-blocked call stays blocked).

@@ -74,6 +74,47 @@ def test_chained_command_any_segment_destructive():
     assert cp.is_destructive("ok || git reset --hard").destructive is True
 
 
+# --------------------------------------------- runner-prefix unwrap (red-team pass)
+@pytest.mark.parametrize("cmd", [
+    "exec rm -rf /",                  # exec replaces the process with rm
+    "sudo rm -rf /",
+    "doas rm -rf /",
+    "timeout 5 rm -rf /",            # runner + numeric arg
+    "env FOO=bar rm -rf /data",      # runner + KEY=VAL
+    "nice -n 10 rm -rf /var",        # runner + flag + numeric
+    "xargs -0 rm -rf",
+    "nohup rm -rf /tmp/x",
+    "setsid rm -rf /tmp/y",
+    "sudo sh -c 'rm -rf /'",         # runner wrapping a shell wrapper (quoting must survive)
+    "sudo timeout 5 rm -rf /",       # runner wrapping a runner
+])
+def test_runner_prefix_is_unwrapped(cmd):
+    assert cp.is_destructive(cmd).destructive is True
+
+
+@pytest.mark.parametrize("cmd", [
+    "sudo apt update",
+    "timeout 5 curl http://x",
+    "env PATH=/x ls",
+    "nice -n 5 python train.py",
+])
+def test_runner_prefix_benign_not_flagged(cmd):
+    assert cp.is_destructive(cmd).destructive is False
+
+
+# --------------------------------------------- eval of dynamic/constructed command
+def test_eval_of_quoted_destructive_string():
+    assert cp.is_destructive('eval "rm -rf /"').destructive is True
+
+
+def test_eval_of_substitution_flagged_for_review():
+    # the produced string can be destructive in a way no static body-scan reveals
+    # (printf 'rm -rf /'); flagging eval-of-substitution is the safe-side require_approval trigger
+    v = cp.is_destructive("eval \"$(printf 'rm -rf /')\"")
+    assert v.destructive is True
+    assert any("eval" in r for r in v.reasons)
+
+
 # --------------------------------------------------------------- safety of output
 def test_reasons_never_leak_full_command():
     # A reason names the *kind* of danger, not the full raw argument string

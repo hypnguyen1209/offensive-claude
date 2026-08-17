@@ -32,6 +32,11 @@ from typing import Optional
 _SEP = {"&&", "||", ";", "|", "&"}
 # wrappers whose FINAL string argument is itself a command to re-scan
 _SHELL_WRAPPERS = {"sh", "bash", "zsh", "dash", "ksh", "ash"}
+# "runner" prefixes that execute a FOLLOWING command; the danger is in what they wrap,
+# so we strip the runner (and its own flags/env-assigns/numeric args) and re-scan the rest.
+# `exec rm -rf /`, `sudo rm -rf /`, `timeout 5 rm -rf /`, `env A=b rm -rf /`, `xargs -0 rm -rf`.
+_RUNNERS = {"sudo", "doas", "nohup", "setsid", "nice", "ionice", "timeout", "stdbuf",
+            "env", "command", "exec", "time", "xargs", "watch", "chroot", "unbuffer"}
 
 
 @dataclass
@@ -132,6 +137,27 @@ def _explode_bodies(command: str) -> list[str]:
     return [b.strip() for b in bodies if b.strip()]
 
 
+def _strip_runners(words: list[str]) -> tuple[list[str], bool]:
+    """Drop leading runner names + their own flags / KEY=VAL env-assigns / bare-numeric args,
+    returning (wrapped_command_words, saw_runner). Bounded, best-effort — a runner may wrap a
+    runner (`sudo timeout 5 rm ...`)."""
+    i, n, saw = 0, len(words), False
+    while i < n:
+        base = words[i].rsplit("/", 1)[-1]
+        if base not in _RUNNERS:
+            break
+        saw = True
+        i += 1
+        # skip this runner's options / env-assignments / numeric args until the next command word
+        while i < n:
+            t = words[i]
+            if t.startswith("-") or t.isdigit() or ("=" in t and not t.startswith("=")):
+                i += 1
+            else:
+                break
+    return words[i:], saw
+
+
 def _split_segments(tokens: list[str]) -> list[list[str]]:
     """Split a flat token list into simple-command segments on shell separators."""
     segs: list[list[str]] = []
@@ -174,29 +200,59 @@ def is_destructive(command: Optional[str], _depth: int = 0) -> Verdict:
         tokens = normalized.split()
 
     for seg in _split_segments(tokens):
-        if not seg:
-            continue
-        base = seg[0].rsplit("/", 1)[-1]
-        # shell wrapper: re-scan its payload argument (`sh -c '<cmd>'`)
-        if base in _SHELL_WRAPPERS and "-c" in seg:
-            try:
-                payload = seg[seg.index("-c") + 1]
-            except IndexError:
-                payload = ""
-            inner = is_destructive(payload, _depth + 1)
-            if inner.destructive:
-                reasons.extend(inner.reasons)
-                matched.extend(inner.matched)
-            continue
-        r = _is_destructive_simple(seg)
-        if r:
-            reasons.append(r)
-            matched.append(base)
+        r, m = _classify_segment(seg, _depth)
+        reasons.extend(r)
+        matched.extend(m)
 
     # dedup while preserving order
     reasons = list(dict.fromkeys(reasons))
     matched = list(dict.fromkeys(matched))
     return Verdict(bool(reasons), reasons, matched)
+
+
+def _classify_segment(seg: list[str], depth: int) -> tuple[list[str], list[str]]:
+    """Classify one simple-command token segment, unwrapping shell wrappers / eval / runner
+    prefixes by recursing on the *token list* (never re-stringified — that would lose the quoting
+    that protects a payload like `sh -c 'rm -rf /'`)."""
+    if not seg:
+        return [], []
+    reasons: list[str] = []
+    matched: list[str] = []
+    base = seg[0].rsplit("/", 1)[-1]
+
+    # shell wrapper: re-scan its payload argument (`sh -c '<cmd>'`)
+    if base in _SHELL_WRAPPERS and "-c" in seg:
+        try:
+            payload = seg[seg.index("-c") + 1]
+        except IndexError:
+            payload = ""
+        inner = is_destructive(payload, depth + 1)
+        return list(inner.reasons), list(inner.matched)
+
+    # eval: runs a dynamically-constructed string. Re-scan the argument as a command, and flag
+    # eval-of-substitution (`eval "$(...)"`/backticks) — the produced string can be destructive in
+    # ways no static scan of the *body* (e.g. printf 'rm -rf /') would reveal.
+    if base == "eval":
+        arg = " ".join(seg[1:])
+        if "$(" in arg or "`" in arg:
+            reasons.append("eval of dynamic/substituted command (manual review)")
+            matched.append("eval")
+        inner = is_destructive(arg, depth + 1)
+        reasons.extend(inner.reasons)
+        matched.extend(inner.matched)
+        return reasons, matched
+
+    # runner prefix (exec/sudo/timeout/env/xargs/...): strip it and re-classify the WRAPPED tokens
+    # directly (preserves quoting, so `sudo sh -c 'rm -rf /'` still re-scans the payload correctly).
+    unwrapped, saw_runner = _strip_runners(seg)
+    if saw_runner and unwrapped and unwrapped != seg and depth <= 6:
+        return _classify_segment(unwrapped, depth + 1)
+
+    r = _is_destructive_simple(seg)
+    if r:
+        reasons.append(r)
+        matched.append(base)
+    return reasons, matched
 
 
 def main(argv: Optional[list[str]] = None) -> int:
