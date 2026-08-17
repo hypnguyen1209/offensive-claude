@@ -61,6 +61,30 @@ def test_content_change_changes_digest(tmp_path):
     assert vsl._dir_digest(sd) != before
 
 
+def test_digest_is_line_ending_independent(tmp_path):
+    # A git autocrlf (CRLF) checkout on Windows and an LF checkout on Linux hold the SAME committed
+    # blob; the lock must not drift between them. CRLF vs LF -> identical digest.
+    lf = tmp_path / "lf"
+    crlf = tmp_path / "crlf"
+    for base, nl in ((lf, b"\n"), (crlf, b"\r\n")):
+        d = base / "skills" / "s" / "scripts"
+        d.mkdir(parents=True)
+        (base / "skills" / "s" / "SKILL.md").write_bytes(b"router")
+        (d / "x.py").write_bytes(b"line1" + nl + b"line2" + nl)
+    assert vsl._dir_digest(lf / "skills" / "s") == vsl._dir_digest(crlf / "skills" / "s")
+
+
+def test_sha256_file_normalizes_across_chunk_boundary(tmp_path):
+    # A CRLF that straddles the read-chunk boundary must still normalize (no false drift).
+    p_lf = tmp_path / "a.txt"
+    p_crlf = tmp_path / "b.txt"
+    body_lf = b"x" * (vsl._CHUNK - 1) + b"\ny"      # LF right after a full chunk
+    body_crlf = b"x" * (vsl._CHUNK - 1) + b"\r\ny"   # CRLF split across the boundary
+    p_lf.write_bytes(body_lf)
+    p_crlf.write_bytes(body_crlf)
+    assert vsl._sha256_file(p_lf) == vsl._sha256_file(p_crlf)
+
+
 # ------------------------------------------------------------------ diff / drift
 def test_changed_skill_is_flagged(tmp_path):
     _make_skill(tmp_path, "s", {"SKILL.md": "v1"})

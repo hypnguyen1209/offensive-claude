@@ -36,10 +36,26 @@ _IGNORE_SUFFIXES = {".pyc", ".pyo"}
 
 
 def _sha256_file(path: Path) -> str:
+    """Hash file content with CRLF normalized to LF.
+
+    Git normalizes line endings on checkout (core.autocrlf), so the same committed blob lands on
+    disk as CRLF on Windows and LF on Linux. Hashing raw bytes would make the lock non-reproducible
+    across platforms (and between a tool-written LF working copy and a git CRLF checkout). Normalizing
+    \\r\\n -> \\n here makes the digest match git's canonical (LF) blob content everywhere.
+    """
     h = hashlib.sha256()
+    tail = b""
     with open(path, "rb") as fh:
         for chunk in iter(lambda: fh.read(_CHUNK), b""):
-            h.update(chunk)
+            buf = tail + chunk
+            # hold back a trailing lone CR so a CRLF split across the chunk boundary still normalizes
+            if buf.endswith(b"\r"):
+                tail, buf = b"\r", buf[:-1]
+            else:
+                tail = b""
+            h.update(buf.replace(b"\r\n", b"\n"))
+    if tail:
+        h.update(tail.replace(b"\r\n", b"\n"))
     return h.hexdigest()
 
 
