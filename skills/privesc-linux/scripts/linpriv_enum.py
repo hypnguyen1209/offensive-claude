@@ -73,7 +73,7 @@ def hdr(t):
 
 def run(cmd, timeout=15):
     try:
-        return subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout).stdout
+        return subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout).stdout  # noqa: subprocess-discipline - hardcoded enumeration commands with shell pipes (e.g. "ldd --version 2>&1 | head -1"); no external/attacker input is interpolated
     except Exception:
         return ""
 

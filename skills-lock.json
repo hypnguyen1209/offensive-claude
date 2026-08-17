@@ -1,0 +1,153 @@
+{
+  "skills": {
+    "active-directory-attack": {
+      "path": "skills/active-directory-attack",
+      "sha256": "bee1df63e1bfc9d353f5c7429af303c19bf8b63c0da5e3a03828c0740d179a35"
+    },
+    "advanced-redteam": {
+      "path": "skills/advanced-redteam",
+      "sha256": "1c85336ae3088966aef90a84ac51dff47c68813f67af0f9b099c23f42801afac"
+    },
+    "ai-agent-redteam": {
+      "path": "skills/ai-agent-redteam",
+      "sha256": "bfff41d362d3b88b3512d4eff2a0808e5a8c99a5b010a60a627c96cb325c8603"
+    },
+    "ai-security": {
+      "path": "skills/ai-security",
+      "sha256": "12a95e9bfbd970899ee4f52a10392bde3765d3b191a375f7a7f26d00f7f40bc5"
+    },
+    "browser-exploitation": {
+      "path": "skills/browser-exploitation",
+      "sha256": "0755830ad65c197f1976992f738e551079a31842e97c88661304aa0d97ca6e8d"
+    },
+    "cicd-supply-chain": {
+      "path": "skills/cicd-supply-chain",
+      "sha256": "9d6471b371de1dd81ee4e5a4fba82d93e5cac68b5a0f1764ac9a28b7eb4dc7a5"
+    },
+    "cloud-security": {
+      "path": "skills/cloud-security",
+      "sha256": "87c446958c8389d6621a50161f9725af16109cf3e905c08377e1ca8caf66a920"
+    },
+    "coding-mastery": {
+      "path": "skills/coding-mastery",
+      "sha256": "80754484bed09794569a4b555dd25d80cc1ae4c6c70e0b5695137baa20635519"
+    },
+    "container-k8s-escape": {
+      "path": "skills/container-k8s-escape",
+      "sha256": "abd00e4ac292db37aee9b60b5d43de866ad0c2cd0f140f3f41e929bd926329a4"
+    },
+    "crypto-analysis": {
+      "path": "skills/crypto-analysis",
+      "sha256": "6276a527c017f3af94b62762708cddea677702642eb86351699b923dd6b29b04"
+    },
+    "edr-evasion": {
+      "path": "skills/edr-evasion",
+      "sha256": "78e3034c9fb37f9579b33cd4077572d4fc5d3d2994116bd87f28446930cbc9dc"
+    },
+    "engagement-flow": {
+      "path": "skills/engagement-flow",
+      "sha256": "9d4528ea83e24b7becc436c73eb50a6f132a393dbedb02d20c7b1b588d3606f6"
+    },
+    "engagement-memory": {
+      "path": "skills/engagement-memory",
+      "sha256": "67110d8b11a70cb0bcc0045902b5a30bcca34f30dae43f9c838777f56d39f8d4"
+    },
+    "exploit-development": {
+      "path": "skills/exploit-development",
+      "sha256": "ce4600b21bf598582cd75fcbf6629c1e57a3316c96cdd5097305e9dd30d813f7"
+    },
+    "finding-discipline": {
+      "path": "skills/finding-discipline",
+      "sha256": "3bf4a9b596e478e20202d68ca1ea53cbb9201f5ba0742d797b5d246e06841e2b"
+    },
+    "incident-response": {
+      "path": "skills/incident-response",
+      "sha256": "d119fbafb971b0c35dd12d4ea5ac8479cee9bd8cc501b70e6a1874ba4eac7597"
+    },
+    "initial-access": {
+      "path": "skills/initial-access",
+      "sha256": "1371f4a3bb85f09e9bed29df8bbba33e38126cfd2e7f117220e5953b692482dc"
+    },
+    "keylogger-arch": {
+      "path": "skills/keylogger-arch",
+      "sha256": "52e000b6557bcc707e97561599e59dc1f7d2221960f90003734fb8daa37c62a9"
+    },
+    "malware-analysis": {
+      "path": "skills/malware-analysis",
+      "sha256": "a68cacdd7540361ba5cf535f02481b1b03558c88579a3a6450d3af59b5c219a1"
+    },
+    "mobile-pentest": {
+      "path": "skills/mobile-pentest",
+      "sha256": "32bfa545267c54bff95d489d8499c055c9d1fa0988f7e9bed2debe23b77e5e1b"
+    },
+    "network-attack": {
+      "path": "skills/network-attack",
+      "sha256": "ef07f959b519358e2c62529646f719cdc31cdbcbd98564e2ab5875e94ec0dde2"
+    },
+    "opsec-discipline": {
+      "path": "skills/opsec-discipline",
+      "sha256": "c978adfcf95e75372ea4d631594638d5be3d6644423d494f2f456f99c3045a71"
+    },
+    "privesc-linux": {
+      "path": "skills/privesc-linux",
+      "sha256": "00f5d79385c417ee4a004b8403252069b69117e360fb35ba7392f8098296f0fd"
+    },
+    "privesc-windows": {
+      "path": "skills/privesc-windows",
+      "sha256": "78e808a3e7eb50e5c65da7545dde4934c96c1be7642ccb8d381280d1201ada18"
+    },
+    "recon-osint": {
+      "path": "skills/recon-osint",
+      "sha256": "7199f2262982fa5fe5192ce19774be8587ec9060dd425d20519a270f278e4a67"
+    },
+    "red-team-ops": {
+      "path": "skills/red-team-ops",
+      "sha256": "7953bbf2dae7d61bfa86a2ed10d5f43b141511aac8205acce773c1b1b47b6328"
+    },
+    "reverse-engineering": {
+      "path": "skills/reverse-engineering",
+      "sha256": "69c7c47524af2917d29f9ea77449978b828c3b906f11e497313f166b28115c96"
+    },
+    "scope-discipline": {
+      "path": "skills/scope-discipline",
+      "sha256": "019c2688a6eafc0aa6d8774de658c6caa7990fdbad82075a94c965e7f7ef36e5"
+    },
+    "shellcode-dev": {
+      "path": "skills/shellcode-dev",
+      "sha256": "35423ccc1c2ef8ec55013319bd54a7a83ac3f712cffff050d076c2aafefe21e8"
+    },
+    "threat-hunting": {
+      "path": "skills/threat-hunting",
+      "sha256": "62e9f4dbdee562ae1590680f54b3ac4813229470d412a73c5553abf173f36a7b"
+    },
+    "threat-model-discipline": {
+      "path": "skills/threat-model-discipline",
+      "sha256": "30bc7fea7514c05b0fcacaaa36764771177f77c0b3603ded86466210ed1c0517"
+    },
+    "using-offensive-claude": {
+      "path": "skills/using-offensive-claude",
+      "sha256": "b2c07b1f1d5eeb89165a88050e6640ee77981c5081f6240664c911fb131a0eff"
+    },
+    "vulnerability-analysis": {
+      "path": "skills/vulnerability-analysis",
+      "sha256": "4a3c5dd9fd708998a491daf7e6ae1dd6c0d709c6444ab94bd5add44ebc7d108f"
+    },
+    "web-pentest": {
+      "path": "skills/web-pentest",
+      "sha256": "6242cb4692238f7b171ed1cef08c432f018c2c9132e3f861d8d24891bcae7d5e"
+    },
+    "windows-boundaries": {
+      "path": "skills/windows-boundaries",
+      "sha256": "807051ed3a8741d0e83e40fc97e52f6f668153a3349c8d47f4e992a9206ac5e2"
+    },
+    "windows-mitigations": {
+      "path": "skills/windows-mitigations",
+      "sha256": "4a80f621c1d5253f317ae1f4d8f2a43111aea7fca8085ea7d421933b900085de"
+    },
+    "writing-offensive-skills": {
+      "path": "skills/writing-offensive-skills",
+      "sha256": "2596674b048b98bcb52aadc343bda6d03f7078a65d2a41e2509be8b0f05078bf"
+    }
+  },
+  "version": 1
+}

@@ -27,7 +27,8 @@ jobs:
           import pathlib, py_compile, sys
           bad = []
           targets = list(pathlib.Path("skills").rglob("scripts/**/*.py")) \
-                  + list(pathlib.Path("engine").rglob("*.py"))
+                  + list(pathlib.Path("engine").rglob("*.py")) \
+                  + list(pathlib.Path("scripts").rglob("*.py"))
           for p in targets:
               try:
                   py_compile.compile(str(p), doraise=True)
@@ -35,6 +36,26 @@ jobs:
                   bad.append(str(p)); print(e)
           sys.exit(1 if bad else 0)
           PY
+
+  consistency:
+    # Fail-closed CI gates that guard the plugin's safety/consistency invariants (scripts/ci/).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Safety-substring drift canary
+        run: python scripts/ci/check_invariants.py
+      - name: Agent guardrail floor
+        run: python scripts/ci/check_constitution.py
+      - name: Skill-tree lockfile
+        run: python scripts/ci/verify_skills_lock.py
+      - name: Shell-injection ban (os.system/os.popen/shell=True)
+        run: python scripts/ci/check_subprocess_discipline.py
+      - name: Scored-judge frozen-baseline self-test
+        run: python scripts/ci/agent_eval_selftest.py --selftest
 
   shellcheck:
     runs-on: ubuntu-latest
