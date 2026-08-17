@@ -171,9 +171,20 @@ Directly kills the recurring "manual CLAUDE/README/skills parity pass" recorded 
 
 6. **Wire all four validators into `.github/workflows/tests.yml`** as a `lint`/`consistency` job.
 
-### PR-3 — T2 Finding-quality / provenance (reinforces the core)
+### PR-3 — T2 Finding-quality / provenance (reinforces the core) — DONE
 
 Concrete mechanisms for systems we already have (quote-grounded confidence, adversarial judges).
+
+> **Status: implemented.** (1) per-hop provenance gate — `provenance.py` + `_apply_provenance_cap` in
+> `validate_findings.py` (all-EXTRACTED ⇒ CONFIRMED allowed; any INFERRED/AMBIGUOUS/empty caps to
+> POSSIBLE; never promotes/rescues REJECTED). (2) discrete confidence + (3) formal judge protocol —
+> `engine/judge_protocol.py` (five buckets or AMBIGUOUS, pinned decoding, versioned+fingerprinted
+> rubric, `[EVD-XXX]`-cited accepts, `cache_key` invalidates on rubric bump, `is_calibrated` strict
+> PASS>KILL gate), wired into `finding-validator`/`finding-checker` prompts + `agent_eval_selftest.py`
+> golden scenarios + `skills/references/llm-judge-protocol.md`. (4) `finding_dedup.py` content-hash
+> dedup (within-phase window). (5) `vocab_gate.py` executable vocabulary-grounding (fail-closed). (6)
+> Cohen's kappa in `model_scorecard.py` (`record-pair`/`kappa`, dialect canonicalization, degenerate ⇒
+> None not 1.0, informational — does not feed `is_trusted`). All TDD-green; 688 tests; 5 CI gates pass.
 
 1. **Per-hop provenance enum** — extend `taint_trace.py` / `path_conditions.py` / source-to-sink
    records so **each hop** carries `provenance ∈ {EXTRACTED, INFERRED, AMBIGUOUS}` (graphify rule:

@@ -28,6 +28,7 @@ import math
 import os
 import sqlite3
 import sys
+from collections import Counter
 from typing import Optional
 
 DEFAULT_MAX_RATE = 0.05      # trust a cell only if the miss-rate's 95% upper bound is <= 5%
@@ -49,6 +50,19 @@ def _connect(path: Optional[str] = None) -> sqlite3.Connection:
         model TEXT NOT NULL,
         decision_class TEXT NOT NULL,
         overturned INTEGER NOT NULL CHECK (overturned IN (0, 1)),
+        ts TEXT
+    )""")
+    # Paired verdicts on the SAME finding by the two independent judges (finding-validator vs
+    # finding-checker) - the raw material for Cohen's kappa, a reliability signal that sits ALONGSIDE
+    # miss-rate. High miss-rate says "often wrong"; low kappa says "the two judges barely agree above
+    # chance", i.e. the accept/reject signal itself is noisy and neither verdict should be trusted to
+    # short-circuit the other. Kappa is informational - it does NOT feed is_trusted().
+    conn.execute("""CREATE TABLE IF NOT EXISTS agreement (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        finding_id TEXT,
+        decision_class TEXT,
+        rater_a TEXT NOT NULL,
+        rater_b TEXT NOT NULL,
         ts TEXT
     )""")
     conn.commit()
@@ -116,6 +130,99 @@ def is_trusted(model: str, decision_class: str, *, max_rate: float = DEFAULT_MAX
     return True, f"miss-rate upper bound {upper:.3f} <= {max_rate} over {n} samples ({misses} overturned)"
 
 
+def _kappa_band(kappa: float) -> str:
+    """Landis-Koch interpretation of an agreement coefficient."""
+    if kappa < 0.0:
+        return "poor (worse than chance)"
+    if kappa < 0.20:
+        return "slight"
+    if kappa < 0.40:
+        return "fair"
+    if kappa < 0.60:
+        return "moderate"
+    if kappa < 0.80:
+        return "substantial"
+    return "almost perfect"
+
+
+def cohens_kappa(pairs) -> dict:
+    """Cohen's kappa over (rater_a_label, rater_b_label) pairs. Pure; category set = union of labels.
+
+    kappa = (p_o - p_e) / (1 - p_e), p_o = observed agreement, p_e = chance agreement from marginals.
+    Fail-SAFE degenerate handling: no data or a single shared category (p_e == 1, chance agreement is
+    total) -> kappa is undefined, returned as None with a reason, NOT as a high score. A reliability
+    metric must never report "perfect" for a case where agreement carries no information."""
+    clean = [(str(a), str(b)) for a, b in pairs if a is not None and b is not None]
+    n = len(clean)
+    if n == 0:
+        return {"kappa": None, "n": 0, "p_o": None, "p_e": None,
+                "interpretation": "no data", "categories": []}
+    cats = sorted({c for pair in clean for c in pair})
+    p_o = sum(1 for a, b in clean if a == b) / n
+    a_counts, b_counts = Counter(a for a, _ in clean), Counter(b for _, b in clean)
+    p_e = sum((a_counts[c] / n) * (b_counts[c] / n) for c in cats)
+    if p_e >= 1.0:
+        return {"kappa": None, "n": n, "p_o": p_o, "p_e": p_e,
+                "interpretation": "degenerate (single category - agreement uninformative)",
+                "categories": cats}
+    kappa = (p_o - p_e) / (1.0 - p_e)
+    return {"kappa": kappa, "n": n, "p_o": p_o, "p_e": p_e,
+            "interpretation": _kappa_band(kappa), "categories": cats}
+
+
+def record_pair(rater_a: str, rater_b: str, *, finding_id: str = "", decision_class: str = "",
+                path: Optional[str] = None, ts: str = "") -> None:
+    """Record one paired verdict: rater_a = validator label, rater_b = checker label, same finding."""
+    if not rater_a or not rater_b:
+        raise ValueError("rater_a and rater_b labels are required")
+    conn = _connect(path)
+    try:
+        conn.execute(
+            "INSERT INTO agreement (finding_id, decision_class, rater_a, rater_b, ts) VALUES (?,?,?,?,?)",
+            (str(finding_id or ""), str(decision_class or ""), str(rater_a), str(rater_b), ts or ""))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _agreement_pairs(decision_class: Optional[str] = None, *, path: Optional[str] = None) -> list:
+    conn = _connect(path)
+    try:
+        if decision_class:
+            rows = conn.execute("SELECT rater_a, rater_b FROM agreement WHERE decision_class=?",
+                                (str(decision_class),)).fetchall()
+        else:
+            rows = conn.execute("SELECT rater_a, rater_b FROM agreement").fetchall()
+    finally:
+        conn.close()
+    return [(a, b) for a, b in rows]
+
+
+# The two judges speak different dialects (validator: PASS/KILL/DOWNGRADE; checker:
+# ACCEPTED/STALLED/EXHAUSTED). Kappa needs a SHARED label space, so map both onto a canonical
+# accept/reject/partial before comparing - otherwise disjoint vocabularies never string-match and
+# kappa reads a misleading ~0 ("poor agreement") when the judges actually concur. Unknown labels pass
+# through lowercased so a novel verdict is compared literally rather than silently folded.
+_CANON_VERDICT = {
+    "pass": "accept", "accepted": "accept", "accept": "accept",
+    "kill": "reject", "stalled": "reject", "reject": "reject", "rejected": "reject",
+    "downgrade": "partial", "exhausted": "partial", "partial": "partial",
+}
+
+
+def _canon_verdict(label) -> str:
+    s = str(label).strip().lower()
+    return _CANON_VERDICT.get(s, s)
+
+
+def agreement_kappa(decision_class: Optional[str] = None, *, path: Optional[str] = None) -> dict:
+    """Cohen's kappa over all recorded (validator, checker) pairs, optionally scoped to a class.
+    Both raters' labels are canonicalized to accept/reject/partial so the two judge dialects align."""
+    pairs = [(_canon_verdict(a), _canon_verdict(b))
+             for a, b in _agreement_pairs(decision_class, path=path)]
+    return cohens_kappa(pairs)
+
+
 def stats(path: Optional[str] = None) -> list:
     conn = _connect(path)
     try:
@@ -145,6 +252,12 @@ def main(argv=None) -> int:
     t.add_argument("--max-rate", type=float, default=DEFAULT_MAX_RATE)
     t.add_argument("--min-n", type=int, default=DEFAULT_MIN_N); t.add_argument("--db")
     s = sub.add_parser("stats"); s.add_argument("--db")
+    rp = sub.add_parser("record-pair", help="record a paired validator/checker verdict on one finding")
+    rp.add_argument("--validator", required=True); rp.add_argument("--checker", required=True)
+    rp.add_argument("--finding-id", default=""); rp.add_argument("--class", dest="cls", default="")
+    rp.add_argument("--db")
+    k = sub.add_parser("kappa", help="Cohen's kappa between validator and checker (reliability signal)")
+    k.add_argument("--class", dest="cls", default=""); k.add_argument("--db")
     args = p.parse_args(argv)
     try:
         if args.cmd == "record":
@@ -169,6 +282,16 @@ def main(argv=None) -> int:
         if args.cmd == "stats":
             import json
             print(json.dumps(stats(path=args.db), indent=2))
+            return 0
+        if args.cmd == "record-pair":
+            record_pair(args.validator, args.checker, finding_id=args.finding_id,
+                        decision_class=args.cls, path=args.db)
+            print(f"recorded pair validator={args.validator} checker={args.checker}"
+                  + (f" class={args.cls}" if args.cls else ""))
+            return 0
+        if args.cmd == "kappa":
+            import json
+            print(json.dumps(agreement_kappa(args.cls or None, path=args.db), indent=2))
             return 0
     except (ValueError, sqlite3.Error, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)

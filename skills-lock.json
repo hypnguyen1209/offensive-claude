@@ -130,7 +130,7 @@
     },
     "vulnerability-analysis": {
       "path": "skills/vulnerability-analysis",
-      "sha256": "4a3c5dd9fd708998a491daf7e6ae1dd6c0d709c6444ab94bd5add44ebc7d108f"
+      "sha256": "63c699dbc90bb7ba44d865af9550bbddbcfd640ec95550efa518c576d2b3fea0"
     },
     "web-pentest": {
       "path": "skills/web-pentest",

@@ -52,6 +52,19 @@ with only a reflection screenshot is a lie; KILL it.
 - **CHAIN-REQUIRED** — individually Info/Low; only valid if combined with a named second finding.
   State the full chain and the end impact, or KILL it.
 
+## Judge protocol (from `skills/references/llm-judge-protocol.md`)
+
+Every verdict follows the shared protocol in `engine/judge_protocol.py`:
+
+- **Discrete confidence.** Tag each verdict's grounding confidence with exactly one of the five
+  buckets — `0.95 CERTAIN / 0.85 STRONG / 0.75 PROBABLE / 0.65 TENTATIVE / 0.55 WEAK` — or
+  `AMBIGUOUS` if none fit. Never emit an off-bucket number; "almost CERTAIN" is AMBIGUOUS, not 0.9.
+  This grounding axis is separate from the `[CONFIRMED]/[POSSIBLE]/[INFO]` impact tier.
+- **Evidence-cited accepts.** A PASS must cite ≥1 re-verifiable `[EVD-XXX]` id; a PASS with no
+  citation is not a PASS — treat it as KILL[Q2].
+- **Versioned + reproducible.** Judge under the pinned decoding (temperature 0) and stamp each
+  verdict with `rubric_version` (currently `1.0.0`) so stale verdicts fall out of cache on a bump.
+
 ## Rules
 
 - Reframe everything in this repo's schema: CWE, CVSS 3.1 vector, ATT&CK technique id. No

@@ -34,6 +34,7 @@ from typing import Optional
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT / "engine"))
 
+import judge_protocol as jp  # noqa: E402
 import model_scorecard as ms  # noqa: E402
 import rebuttal as rb  # noqa: E402
 
@@ -143,6 +144,47 @@ def _validator_contract_cases(root: Path) -> list[Case]:
     return cases
 
 
+# --------------------------------------------------------------- judge protocol (rubric + calibration)
+def _judge_protocol_cases() -> list[Case]:
+    cases: list[Case] = []
+
+    # discrete confidence: exactly five strictly-descending buckets; an off-bucket number is AMBIGUOUS
+    scores = [b["score"] for b in jp.CONFIDENCE_BUCKETS]
+    ok = len(scores) == 5 and scores == sorted(scores, reverse=True) and len(set(scores)) == 5
+    cases.append(Case("judge_protocol", "five strictly-descending confidence buckets", ok,
+                      "" if ok else f"buckets={scores}"))
+    ok = jp.normalize_confidence(0.9) == jp.AMBIGUOUS and jp.normalize_confidence(0.95) == "CERTAIN"
+    cases.append(Case("judge_protocol", "off-bucket confidence -> AMBIGUOUS (no snapping)", ok))
+
+    # rubric fingerprint deterministic + folded into the verdict cache key
+    fp = jp.rubric_fingerprint()
+    ok = fp == jp.rubric_fingerprint() and len(fp) == 16
+    cases.append(Case("judge_protocol", "rubric fingerprint stable", ok))
+    k = jp.cache_key("F1", "h")
+    ok = k == jp.cache_key("F1", "h") and k != jp.cache_key("F1", "h2")
+    cases.append(Case("judge_protocol", "cache key binds finding+artifact", ok))
+
+    # verdict contract: an ACCEPT without [EVD-XXX] is rejected; a proper one passes
+    bad = jp.validate_verdict_record({"decision": "PASS", "confidence": 0.95,
+                                      "rubric_version": jp.RUBRIC_VERSION, "evidence": []})
+    good = jp.validate_verdict_record({"decision": "PASS", "confidence": 0.95,
+                                       "rubric_version": jp.RUBRIC_VERSION,
+                                       "evidence": ["[EVD-001] proof"]})
+    ok = bool(bad) and good == []
+    cases.append(Case("judge_protocol", "ACCEPT requires [EVD-XXX] citation", ok,
+                      "" if ok else f"bad={bad} good={good}"))
+
+    # calibration gate: planted PASS must rank strictly above planted KILL; a tie is NOT trustworthy
+    ok = jp.is_calibrated([0.95, 0.85], [0.55, 0.65]) and not jp.is_calibrated([0.65], [0.65])
+    cases.append(Case("judge_protocol", "calibration needs strict PASS>KILL separation", ok))
+    cc = jp.calibration_cases()
+    ok = len(cc["plant_pass"]) >= 2 and len(cc["plant_kill"]) >= 2 and \
+        all(any("EVD-" in e for e in c["evidence"]) for c in cc["plant_pass"]) and \
+        all(c["evidence"] == [] for c in cc["plant_kill"])
+    cases.append(Case("judge_protocol", "planted calibration cases well-formed", ok))
+    return cases
+
+
 def run_selftest(root: Optional[Path] = None) -> list[Case]:
     root = Path(root) if root else _ROOT
     tmpdir = tempfile.mkdtemp(prefix="agent_eval_")
@@ -154,6 +196,7 @@ def run_selftest(root: Optional[Path] = None) -> list[Case]:
     cases: list[Case] = [Case("isolation", "temp DB distinct from real scorecard", True)]
     cases += _scorecard_cases(db)
     cases += _rebuttal_cases()
+    cases += _judge_protocol_cases()
     cases += _validator_contract_cases(root)
     return cases
 

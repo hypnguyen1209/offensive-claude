@@ -141,3 +141,88 @@ def test_regression_negative_min_n_fails_closed(db):
         ms.record("opus", "c", overturned=False, path=db)
     assert ms.is_trusted("opus", "c", min_n=0, path=db)[0] is False
     assert ms.main(["trusted", "--model", "opus", "--class", "c", "--min-n", "0", "--db", db]) == 2
+
+
+# --------------------------------------------------------- Cohen's kappa (reliability signal)
+def test_kappa_no_data_is_none():
+    r = ms.cohens_kappa([])
+    assert r["kappa"] is None and r["n"] == 0
+
+
+def test_kappa_perfect_agreement_two_categories():
+    # cohens_kappa is generic: it compares labels literally, so a shared label space is required.
+    pairs = [("accept", "accept")] * 5 + [("reject", "reject")] * 5
+    r = ms.cohens_kappa(pairs)
+    assert r["p_o"] == 1.0
+    assert abs(r["kappa"] - 1.0) < 1e-9
+    assert r["interpretation"] == "almost perfect"
+
+
+def test_agreement_kappa_canonicalizes_judge_dialects(db):
+    # validator PASS vs checker ACCEPTED are the SAME decision -> perfect agreement after canon
+    for _ in range(5):
+        ms.record_pair("PASS", "ACCEPTED", path=db)
+    for _ in range(5):
+        ms.record_pair("KILL", "STALLED", path=db)
+    r = ms.agreement_kappa(path=db)
+    assert abs(r["kappa"] - 1.0) < 1e-9
+
+
+def test_kappa_chance_level_is_near_zero():
+    # raters independent: 2x2 balanced grid -> observed == expected agreement -> kappa ~ 0
+    pairs = [("A", "A"), ("A", "B"), ("B", "A"), ("B", "B")]
+    r = ms.cohens_kappa(pairs)
+    assert abs(r["kappa"]) < 1e-9
+
+
+def test_kappa_below_chance_is_negative_and_poor():
+    # raters systematically disagree
+    pairs = [("A", "B"), ("B", "A"), ("A", "B"), ("B", "A")]
+    r = ms.cohens_kappa(pairs)
+    assert r["kappa"] < 0
+    assert "poor" in r["interpretation"]
+
+
+def test_kappa_single_category_is_degenerate_not_perfect():
+    # both raters only ever say ACCEPT -> chance agreement is total -> undefined, NOT 1.0
+    r = ms.cohens_kappa([("ACCEPT", "ACCEPT")] * 10)
+    assert r["kappa"] is None
+    assert "degenerate" in r["interpretation"]
+
+
+def test_kappa_ignores_none_labels():
+    r = ms.cohens_kappa([("A", "A"), (None, "A"), ("A", None)])
+    assert r["n"] == 1
+
+
+def test_record_pair_and_agreement_kappa_roundtrip(db):
+    for _ in range(4):
+        ms.record_pair("PASS", "ACCEPTED", decision_class="exploit", path=db)
+    for _ in range(4):
+        ms.record_pair("KILL", "STALLED", decision_class="exploit", path=db)
+    r = ms.agreement_kappa("exploit", path=db)
+    assert r["n"] == 8
+    assert abs(r["kappa"] - 1.0) < 1e-9
+
+
+def test_agreement_kappa_scoped_by_class(db):
+    ms.record_pair("PASS", "ACCEPTED", decision_class="web", path=db)
+    ms.record_pair("KILL", "STALLED", decision_class="net", path=db)
+    assert ms.agreement_kappa("web", path=db)["n"] == 1
+    assert ms.agreement_kappa(None, path=db)["n"] == 2
+
+
+def test_record_pair_requires_both_labels(db):
+    import pytest
+    with pytest.raises(ValueError):
+        ms.record_pair("", "ACCEPTED", path=db)
+
+
+def test_cli_record_pair_and_kappa(db, capsys):
+    assert ms.main(["record-pair", "--validator", "PASS", "--checker", "ACCEPTED", "--db", db]) == 0
+    assert ms.main(["record-pair", "--validator", "KILL", "--checker", "STALLED", "--db", db]) == 0
+    capsys.readouterr()
+    assert ms.main(["kappa", "--db", db]) == 0
+    out = capsys.readouterr().out
+    assert '"n": 2' in out
+    assert '"kappa"' in out

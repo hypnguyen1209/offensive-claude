@@ -43,11 +43,19 @@ rounds run out it is EXHAUSTED (downgraded, never auto-accepted). Default to ref
  "reasons": ["evidence/F1.txt shows a 302 to a same-origin path, not an external host"],
  "missing_evidence": ["no response body for the IMDS claim"],
  "hedges": ["'should be exploitable'"],
- "uncited_claims": ["privilege escalation asserted with no EVD reference"]}
+ "uncited_claims": ["privilege escalation asserted with no EVD reference"],
+ "confidence": "AMBIGUOUS",
+ "rubric_version": "1.0.0"}
 ```
 
 `refuted` is the single boolean the rebuttal loop consumes; `reasons[0]` is the round's reason. Set
 `refuted:false` ONLY when the artifact alone fully supports the claim and every cited EVD verifies.
+
+`confidence` is your grounding confidence in the claim *as supported by the artifact alone*, from the
+five discrete buckets in `skills/references/llm-judge-protocol.md`
+(`0.95 CERTAIN / 0.85 STRONG / 0.75 PROBABLE / 0.65 TENTATIVE / 0.55 WEAK`) or `AMBIGUOUS` if none
+fit — never an off-bucket number. When you refute, the claim is by definition not fully grounded, so
+`confidence` is at most TENTATIVE (usually AMBIGUOUS). Stamp `rubric_version` from the same protocol.
 
 ## Rules
 
