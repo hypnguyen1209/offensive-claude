@@ -269,6 +269,22 @@ kernel). Candidate-generation feeding existing verification; never treated as pr
 **"Errors teach abandonment" (codegraph):** every codegraph CLI returns **success-shaped guidance**
 for recoverable states (not-indexed, not-found), reserving error exit for genuine "stop trying".
 
+### PR-5 — T5 Memory scaling (M/L) — DONE
+
+> **Status (2026-08-17): DONE.** Three cohesive modules + siblings: `skills/coding-mastery/scripts/_lib/private_tag.py`
+> (item 5 — `<private>` boundary strip, fail-closed on unclosed tags, absent≠empty, value-free marker),
+> `engine/finding_store.py` (items 1+2+4 — content-owning FTS5 mirror so count-mismatch is *detectable*
+> and self-heals on open; scope-guard in Python **and** a `RAISE(ABORT)` trigger; write-boundary
+> private+secret redaction; 3-layer `search`→`timeline`→`get`; token economics `recall_cost` /
+> `rediscovery_estimate` / `plan_recall` with no silent truncation; content-free `telemetry`),
+> `engine/working_context.py` (item 3 — WORKING-CONTEXT.md renderer, compact layer-1 only, cell-escaped).
+> 47 new tests; full suite 799 passed; 5 CI gates green; skills-lock re-pinned (private_tag lives under
+> `skills/`). Inline red-team fixed a markdown-table break (title with `|`/newline) and drove the FTS
+> design correction below. Deviation from the spec letter: the spec named external-content FTS5, but
+> external-content `COUNT(*)` reads the base table and **hides** drift — switched to a content-owning
+> mirror so "count-mismatch auto-rebuild" actually works; rebuild is DELETE+re-INSERT (the `'rebuild'`
+> command is external-content-only). FTS5 absence degrades to a LIKE search (defensive; this build has it).
+
 ### PR-5 — T5 Memory scaling (M/L)
 
 1. **3-layer finding retrieval** (claude-mem) — replace "inject all prior findings" with
