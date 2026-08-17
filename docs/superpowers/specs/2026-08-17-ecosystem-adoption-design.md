@@ -36,7 +36,8 @@ what we already do; T2 captures those.
 `using-offensive-claude` dispatcher and discipline skills are injected into the parent thread but
 **not into dispatched subagents** (`finding-validator`, `finding-checker`, hunt agents). Per
 ponytail issue #252, SessionStart context never reaches subagents — so our discipline-enforcement
-agents may run discipline-unaware. Fixed in PR-1 (SubagentStart re-injection).
+agents may run discipline-unaware. Fixed in PR-1 by embedding a forked-subagent discipline block in
+each agent `.md` (the hook route is not viable — see item 5).
 
 ## Design invariants (apply to every PR)
 
@@ -96,20 +97,31 @@ Highest fit to the plugin's identity. Pure-additive except the two hook/agent wi
    widening scope to "pass" a gate is exactly this failure mode. Fail-closed on stat error except
    ENOENT.
 
-5. **SubagentStart discipline re-injection** — add a `SubagentStart` hook to `hooks/hooks.json` that
-   re-emits the `using-offensive-claude` dispatcher + discipline pointer (reuse the existing
-   `session-start` hook body, or a thin `subagent-start` sibling). Fail-open (inject on any error).
-   Optional `OFFENSIVE_SUBAGENT_MATCHER` env scope. Closes the verified gap. (Note: confirm the exact
-   `SubagentStart` event name/shape against the installed Claude Code version before wiring; if
-   unsupported, document and fall back to embedding the dispatcher pointer in each agent's `.md`.)
+5. **Subagent discipline re-injection** — RESOLVED via the documented fallback, not a hook. The
+   installed Claude Code exposes `SubagentStart`, but it is a **read-only** event: it cannot inject
+   `additionalContext` or otherwise modify a spawned subagent (verified against
+   code.claude.com/docs/en/hooks — "Can block? No", and the docs explicitly direct context-to-subagent
+   needs to `.claude/rules/` or the subagent's own frontmatter). So the hook route is dead. Instead,
+   each agent `.md` (`redteam-planner`, `exploit-researcher`, `security-reviewer`, `reverse-engineer`,
+   `ai-researcher`, `network-analyst`) now carries an "Operating discipline (you run forked)" block
+   stating the dispatcher is not inherited and restating the non-negotiables (scope via
+   `scope_guard.py` + `.engage/scope/scope.json`, the per-class evidence bar, OPSEC/secret-redaction,
+   `TERMS.md`). `finding-validator`/`finding-checker` already saturate scope (Q1) + evidence (Q2) so
+   they were left as-is. This is fail-safe (static text, no runtime). Closes the verified gap.
 
-6. **Codify fail-open/closed per hook** — a header comment block in each hook script + a row in
-   `hooks/hooks.json`-adjacent doc stating its degradation mode (session-start: fail-open;
-   action/scope guard: fail-closed). Matches claude-mem exit-code policy.
+6. **Codify fail-open/closed per hook** — DONE. Header comment block in `hooks/session-start` +
+   new `hooks/README.md` (the JSON-adjacent doc, since `hooks.json` can't carry comments) with a
+   per-hook degradation-mode table and the fail-open (context injection) vs fail-closed (safety
+   guards) rule of thumb. Matches claude-mem exit-code policy.
 
-7. **`git_safe` `--end-of-options` audit** — extend `safe_subprocess.py:git_safe()` to insert `--` /
-   `--end-of-options` before user-controlled refs/paths and set `GCM_INTERACTIVE=never` (repomix
-   `gitCommand.ts`). Pure hardening; add tests asserting the terminators appear.
+7. **`git_safe` `--end-of-options` audit** — DONE with a correction. `GCM_INTERACTIVE=never` was
+   already set in `git_safe_env()`. Blind terminator insertion inside `git_safe()` is *unsafe* — it
+   cannot know where positionals begin (`['-C', repo, 'log', rev]` has no fixed boundary), so
+   inserting `--`/`--end-of-options` at a guessed index would corrupt the argv. Instead added
+   `git_rev_argv(subcommand, refs, paths)`: the caller that knows which tokens are user-controlled
+   declares the boundary, and the helper places refs after `--end-of-options` and paths after `--`
+   so a ref/path beginning with `-` can never be parsed as an option. `git_clone_safe` already uses
+   `--`. Tests assert the terminators appear and a leading-dash ref stays behind them.
 
 **Tests:** one `tests/scripts/coding-mastery/test_*.py` per new module (cmd_parser, secret_scan,
 unicode_scan) + action_guard integration cases + git_safe terminator assertions. Bypass-corpus for

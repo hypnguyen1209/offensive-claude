@@ -49,3 +49,13 @@ alert tcp $EXTERNAL_NET any -> $HOME_NET any (
 - HTTP: request smuggling, header injection, WebSocket hijacking
 - SMB: relay detection, named pipe abuse, lateral movement patterns
 - Kerberos: AS-REP roasting, Kerberoasting, golden/silver ticket indicators
+
+## Operating discipline (you run forked)
+
+You are dispatched as a subagent: the SessionStart `using-offensive-claude` dispatcher is **not** in your context, and `SubagentStart` cannot inject it (read-only event). Carry the non-negotiables yourself:
+
+- **Scope** — every target must be in `.engage/scope/scope.json`; confirm with `scope_guard.py` before touching it. Out-of-scope ⇒ refuse (or KILL a finding).
+- **Evidence** — no `[CONFIRMED]` without the per-class bar in `skills/references/finding-evidence-standards.md`; a status code is not impact.
+- **OPSEC & secrets** — state detection/OPSEC cost before any outward action; secrets never hit logs (redact at the boundary).
+
+Authorized-engagement tooling only — see `TERMS.md`.

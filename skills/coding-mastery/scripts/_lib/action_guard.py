@@ -36,6 +36,16 @@ from typing import Callable, Optional
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 KNOWN_METHODS = SAFE_METHODS | frozenset({"POST", "PUT", "PATCH", "DELETE", "CONNECT", "TRACE"})
 
+# Engagement-critical config: an *edit* to one of these mid-engagement is the "widen scope /
+# neuter a gate to pass" failure mode. Matched by basename (case-insensitive). First-time
+# CREATE is allowed (setup); only EDITS of an existing file need a human.
+_PROTECTED_CONFIG_BASENAMES = frozenset({
+    "scope.json",              # .engage/scope/scope.json - the in-scope target set
+    "roe.json", "roe.md", "roe.yaml", "roe.yml",  # rules of engagement
+    "gate.json", "gates.json", "validation.json",  # gate / finding-validation config
+    "settings.json", "settings.local.json",        # Claude Code deny lists
+})
+
 ALLOW, REQUIRE_APPROVAL, BLOCK = "allow", "require_approval", "block"
 _EXIT = {ALLOW: 0, REQUIRE_APPROVAL: 4, BLOCK: 5}
 
@@ -147,6 +157,43 @@ class ActionGuard:
         except Exception:
             return target
 
+    def decide_command(self, command: str) -> Decision:
+        """Decide whether a shell command may run. A destructive command (rm -rf, git force-push,
+        even hidden behind `sh -c`/`$(...)`) -> require_approval (or block under require_approval_all).
+        Uses cmd_parser's bypass-resistant classifier; reasons name the danger, never the raw args."""
+        try:
+            import cmd_parser
+            v = cmd_parser.is_destructive(command)
+        except Exception:
+            v = None
+        if v is not None and v.destructive:
+            reason = f"destructive command ({', '.join(v.reasons)})"
+            # a destructive op always needs a human; require_approval_all hardens it to block
+            action = BLOCK if self.require_approval_all else REQUIRE_APPROVAL
+            return Decision(action, reason, "", "")
+        return Decision(ALLOW, "no destructive pattern detected", "", "")
+
+    def decide_config_edit(self, path: str) -> Decision:
+        """Decide whether writing `path` may proceed. Editing an EXISTING engagement-critical
+        config (scope.json, ROE, gate/validation config, settings.json deny lists) -> require_approval
+        (block under require_approval_all): silently widening scope or neutering a gate to "pass" is
+        exactly the abuse this stops. First-time CREATE is allowed. Fail-CLOSED: if we cannot stat
+        the path for any reason other than 'it does not exist', treat it as an edit."""
+        name = os.path.basename(str(path).replace("\\", "/").rstrip("/")).lower()
+        if name not in _PROTECTED_CONFIG_BASENAMES:
+            return Decision(ALLOW, "not an engagement-critical config file", "", "")
+        try:
+            os.stat(path)
+            exists = True
+        except FileNotFoundError:
+            exists = False           # ENOENT only -> genuine first-time create
+        except (OSError, ValueError):
+            exists = True            # fail-closed: cannot tell (perm error, NUL byte, ...) -> treat as an edit
+        if not exists:
+            return Decision(ALLOW, f"first-time create of {name} (not an edit)", "", "")
+        action = BLOCK if self.require_approval_all else REQUIRE_APPROVAL
+        return Decision(action, f"edit to engagement-critical config ({name}) needs approval", "", "")
+
     def decide(self, method: str, target: str) -> Decision:
         host = self._host(target)
         # 1. scope (out-of-scope is non-negotiable)
@@ -199,7 +246,30 @@ def main(argv: Optional[list[str]] = None) -> int:
     d.add_argument("--state", help="circuit-breaker state file (persisted atomically)")
     d.add_argument("--json", action="store_true")
 
+    c = sub.add_parser("command", help="decide whether a shell command may run")
+    c.add_argument("--command", required=True)
+    c.add_argument("--require-approval-all", action="store_true")
+    c.add_argument("--json", action="store_true")
+
+    cfg = sub.add_parser("config", help="decide whether writing an engagement-config file may proceed")
+    cfg.add_argument("--path", required=True)
+    cfg.add_argument("--require-approval-all", action="store_true")
+    cfg.add_argument("--json", action="store_true")
+
     args = p.parse_args(argv)
+    if args.cmd in ("command", "config"):
+        try:
+            guard = ActionGuard(None, require_approval_all=args.require_approval_all)
+            dec = (guard.decide_command(args.command) if args.cmd == "command"
+                   else guard.decide_config_edit(args.path))
+            if args.json:
+                print(json.dumps(dec.to_dict()))
+            else:
+                print(f"{dec.action.upper()}: {dec.reason}")
+            return _EXIT[dec.action]
+        except Exception as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
     try:
         scope = None
         if args.scope:

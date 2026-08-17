@@ -225,3 +225,67 @@ def test_regression_allow_binaries_accepts_bare_and_exe(monkeypatch):
     # which is a Result, not a policy raise) - proving the gate didn't over-reject.
     res = ss.run(["definitely_not_a_real_bin_zzz"], allow_binaries=["definitely_not_a_real_bin_zzz"])
     assert res.returncode == 127  # policy passed; binary simply not found (fail-closed Result)
+
+
+# --------------------------------------------------------- git_clone_safe option-injection
+def test_git_clone_safe_inserts_option_terminator():
+    # url/dest that look like options must be placed AFTER '--' so git treats them as positionals.
+    # We assert the constructed argv, not a real clone (which would need network).
+    import types
+    captured = {}
+
+    def fake_run(argv, **kw):
+        captured["argv"] = argv
+        return ss.Result(argv, 0, "", "")
+
+    orig = ss.run
+    ss.run = fake_run
+    try:
+        ss.git_clone_safe("--upload-pack=evil", "dest")
+    finally:
+        ss.run = orig
+    argv = captured["argv"]
+    assert "--" in argv
+    # the malicious url appears only AFTER the terminator
+    assert argv.index("--upload-pack=evil") > argv.index("--")
+    assert argv[-2:] == ["--upload-pack=evil", "dest"]
+
+
+def test_git_clone_safe_rejects_non_str():
+    with pytest.raises(ss.SafeSubprocessError):
+        ss.git_clone_safe(123, "dest")
+
+
+# --------------------------------------------------------- git_rev_argv terminators
+def test_git_rev_argv_places_refs_after_end_of_options():
+    argv = ss.git_rev_argv(["log", "--format=%H"], refs=["--output=/etc/passwd"])
+    assert "--end-of-options" in argv
+    # the option-looking ref appears only AFTER the terminator -> parsed as a rev, not an option
+    assert argv.index("--output=/etc/passwd") > argv.index("--end-of-options")
+    assert argv == ["log", "--format=%H", "--end-of-options", "--output=/etc/passwd"]
+
+
+def test_git_rev_argv_separates_paths_with_double_dash():
+    argv = ss.git_rev_argv(["-C", "repo", "log"], refs=["main"], paths=["--evil-path"])
+    # refs after --end-of-options, paths after --
+    assert argv == ["-C", "repo", "log", "--end-of-options", "main", "--", "--evil-path"]
+    assert argv.index("--evil-path") > argv.index("--")
+
+
+def test_git_rev_argv_no_paths_omits_double_dash():
+    argv = ss.git_rev_argv(["rev-parse"], refs=["HEAD"])
+    assert argv == ["rev-parse", "--end-of-options", "HEAD"]
+    assert "--" not in argv
+
+
+def test_git_rev_argv_composes_with_git_safe(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(ss, "run", lambda argv, **kw: captured.setdefault("argv", argv) or ss.Result(argv, 0, "", ""))
+    ss.git_safe(ss.git_rev_argv(["-C", "r", "cat-file", "-p"], refs=["-deadbeef"]))
+    argv = captured["argv"]
+    assert argv[0] == "git" and "--end-of-options" in argv
+    assert argv.index("-deadbeef") > argv.index("--end-of-options")
+
+
+def test_git_safe_env_sets_gcm_interactive_never():
+    assert ss.git_safe_env()["GCM_INTERACTIVE"] == "never"

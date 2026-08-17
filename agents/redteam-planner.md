@@ -42,3 +42,13 @@ For each attack phase:
 - Maintain detailed logs for the after-action report
 - Separate testing infrastructure from production
 - **Time-box exploration:** if a path yields nothing after reasonable effort, pivot — don't rabbit-hole. Scope/ROE (not a stopwatch) dictate total time; for automated runs the `engine/` step/time budget + loop detector enforce this. Abandon a dead chain rather than repeating the same move.
+
+## Operating discipline (you run forked)
+
+You are dispatched as a subagent: the SessionStart `using-offensive-claude` dispatcher is **not** in your context, and `SubagentStart` cannot inject it (read-only event). Carry the non-negotiables yourself:
+
+- **Scope** — every target must be in `.engage/scope/scope.json`; confirm with `scope_guard.py` before touching it. Out-of-scope ⇒ refuse (or KILL a finding).
+- **Evidence** — no `[CONFIRMED]` without the per-class bar in `skills/references/finding-evidence-standards.md`; a status code is not impact.
+- **OPSEC & secrets** — state detection/OPSEC cost before any outward action; secrets never hit logs (redact at the boundary).
+
+Authorized-engagement tooling only — see `TERMS.md`.

@@ -319,6 +319,44 @@ def git_safe(args: Sequence[str], *,
                timeout=timeout, allow_binaries=["git"])
 
 
+def git_clone_safe(url: str, dest: str, *, depth: int = 1,
+                   cwd: Optional[str] = None, timeout: float = 120) -> Result:
+    """Clone an UNTRUSTED remote with option-injection defeated.
+
+    A caller-supplied `url`/`dest` that starts with '-' (e.g. '--upload-pack=<cmd>') would
+    otherwise be parsed by git as an OPTION, not a positional - a known RCE vector. The `--`
+    terminator (repomix gitCommand.ts discipline) forces everything after it to be treated as
+    a positional. Combined with git_safe's hooks/prompt/host-config hardening."""
+    if not isinstance(url, str) or not isinstance(dest, str):
+        raise SafeSubprocessError("url and dest must be strings")
+    return git_safe(["clone", "--depth", str(int(depth)), "--", url, dest],
+                    cwd=cwd, timeout=timeout)
+
+
+def git_rev_argv(subcommand: Sequence[str], refs: Sequence[str] = (),
+                 paths: Sequence[str] = ()) -> list:
+    """Build a git subcommand argv with option-injection defeated at a CALLER-DECLARED boundary.
+
+    `git_safe` deliberately does NOT guess where positionals begin - `['-C', repo, 'log', rev]`
+    has no fixed boundary, so blind terminator insertion would corrupt the argv. Instead the caller
+    that knows which tokens are user-controlled refs/paths uses this to place them AFTER the
+    terminators: `--end-of-options` (git 2.24+, stops option parsing) then `--` (separates revs from
+    paths). A ref/path beginning with '-' (e.g. `--upload-pack=<cmd>`, `--output=<file>`) can then
+    never be parsed as an option. repomix gitCommand.ts discipline, generalized.
+
+        git_safe(git_rev_argv(['log', '--format=%H'], refs=[user_rev]))
+        git_safe(git_rev_argv(['-C', repo, 'cat-file', '-p'], refs=[user_sha]))
+        git_safe(git_rev_argv(['-C', repo, 'log'], refs=[branch], paths=[user_path]))
+    """
+    sub = list(subcommand)
+    refs = list(refs)
+    paths = list(paths)
+    argv = [*sub, "--end-of-options", *refs]
+    if paths:
+        argv += ["--", *paths]
+    return argv
+
+
 # --------------------------------------------------------------------------- CLI
 def _split_argv(argv):
     """Split CLI args at the '--' separator into (our_opts, child_argv)."""

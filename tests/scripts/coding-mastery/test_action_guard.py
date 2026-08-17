@@ -144,3 +144,87 @@ def test_cli_exit_codes(tmp_path):
     assert ag.main(["decide", "--method", "POST", "--target", "api.acme.com",
                     "--scope", str(sf), "--allow-mutating"]) == 0
     assert ag.main(["decide", "--method", "GET", "--target", "x", "--scope", str(tmp_path / "missing.json")]) == 2
+
+
+# ------------------------------------------------ command decision (cmd_parser integration)
+def test_decide_command_blocks_destructive():
+    g = ag.ActionGuard(None)
+    d = g.decide_command("sh -c 'rm -rf /'")
+    assert d.action == ag.REQUIRE_APPROVAL
+    assert "destructive" in d.reason
+
+
+def test_decide_command_allows_safe():
+    g = ag.ActionGuard(None)
+    assert g.decide_command("ls -la").action == ag.ALLOW
+
+
+def test_decide_command_require_approval_all_blocks():
+    g = ag.ActionGuard(None, require_approval_all=True)
+    assert g.decide_command("git push --force").action == ag.BLOCK
+
+
+def test_cli_command_subcommand():
+    assert ag.main(["command", "--command", "rm -rf /"]) == 4     # require_approval exit
+    assert ag.main(["command", "--command", "ls"]) == 0
+
+
+# ------------------------------------------------ config-edit decision (config-protection)
+def test_config_edit_of_existing_scope_needs_approval(tmp_path):
+    f = tmp_path / "scope.json"
+    f.write_text('{"engagement":"t","in_scope":["*.acme.com"]}', encoding="utf-8")
+    d = ag.ActionGuard(None).decide_config_edit(str(f))
+    assert d.action == ag.REQUIRE_APPROVAL
+    assert "scope.json" in d.reason
+
+
+def test_config_first_time_create_allowed(tmp_path):
+    f = tmp_path / "scope.json"                 # does not exist yet
+    d = ag.ActionGuard(None).decide_config_edit(str(f))
+    assert d.action == ag.ALLOW
+    assert "first-time create" in d.reason
+
+
+def test_config_non_protected_file_allowed(tmp_path):
+    f = tmp_path / "notes.txt"
+    f.write_text("hi", encoding="utf-8")
+    assert ag.ActionGuard(None).decide_config_edit(str(f)).action == ag.ALLOW
+
+
+def test_config_edit_require_approval_all_blocks(tmp_path):
+    f = tmp_path / "settings.json"
+    f.write_text("{}", encoding="utf-8")
+    d = ag.ActionGuard(None, require_approval_all=True).decide_config_edit(str(f))
+    assert d.action == ag.BLOCK
+
+
+def test_config_basename_match_is_case_insensitive_and_path_agnostic(tmp_path):
+    sub = tmp_path / ".engage" / "scope"
+    sub.mkdir(parents=True)
+    f = sub / "Scope.JSON"
+    f.write_text("{}", encoding="utf-8")
+    assert ag.ActionGuard(None).decide_config_edit(str(f)).action == ag.REQUIRE_APPROVAL
+
+
+def test_config_stat_error_fails_closed(tmp_path, monkeypatch):
+    # a protected basename whose stat raises a non-ENOENT OSError -> treated as an edit (fail-closed)
+    def boom(_p):
+        raise PermissionError("denied")
+    monkeypatch.setattr(ag.os, "stat", boom)
+    d = ag.ActionGuard(None).decide_config_edit(str(tmp_path / "roe.json"))
+    assert d.action == ag.REQUIRE_APPROVAL
+
+
+def test_config_nul_byte_path_fails_closed():
+    # NUL in a DIRECTORY component (basename stays the protected 'scope.json') makes os.stat raise
+    # ValueError, not OSError -> the method must still fail closed, never propagate the exception.
+    d = ag.ActionGuard(None).decide_config_edit("di\x00r/scope.json")
+    assert d.action == ag.REQUIRE_APPROVAL
+
+
+def test_cli_config_subcommand(tmp_path):
+    f = tmp_path / "scope.json"
+    f.write_text("{}", encoding="utf-8")
+    assert ag.main(["config", "--path", str(f)]) == 4               # existing edit -> require_approval
+    assert ag.main(["config", "--path", str(tmp_path / "scope.json.new")]) == 0  # not protected basename
+    assert ag.main(["config", "--path", str(tmp_path / "roe.json")]) == 0        # first create allowed

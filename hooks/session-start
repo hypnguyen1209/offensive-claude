@@ -2,6 +2,15 @@
 # SessionStart hook for the offensive-claude plugin.
 # Injects the using-offensive-claude dispatcher into every conversation so the
 # skill-invocation discipline is established before any action.
+#
+# DEGRADATION MODE: FAIL-OPEN (best-effort context injection, never a gate).
+#   Context injection is a convenience, not a safety control. If the dispatcher
+#   cannot be read or the JSON cannot be emitted, the SESSION MUST STILL PROCEED
+#   (per the Claude Code docs SessionStart cannot block anyway). The risky read
+#   below is guarded with `|| echo` so `set -e` cannot abort before we emit, and
+#   the script always ends `exit 0`. This is the OPPOSITE of the runtime safety
+#   guards (scope_guard.py / action_guard.py), which are FAIL-CLOSED: on any doubt
+#   they block/require-approval. See hooks/README.md for the per-hook table.
 
 set -euo pipefail
 
