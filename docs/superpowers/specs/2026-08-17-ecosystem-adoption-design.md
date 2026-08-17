@@ -219,7 +219,19 @@ Concrete mechanisms for systems we already have (quote-grounded confidence, adve
    (Cohen's kappa) between `finding-validator` and `finding-checker` as a reliability signal alongside
    the miss-rate.
 
-### PR-4 — T4 Source-to-sink code-graph (biggest new capability, L)
+### PR-4 — T4 Source-to-sink code-graph (biggest new capability, L) — DONE
+
+> **Status (2026-08-17): DONE.** All 5 items implemented pure-stdlib (no tree-sitter/graspologic
+> dependency — honest about scope: Python `ast` is the only precise extractor; other langs would need
+> optional tree-sitter, not bundled). 64 new tests (build_graph 15, traverse 11, affected 11,
+> attack_surface 13, pack_target 13); full suite 752 passed; 5 CI gates green; skills-lock unchanged
+> (codegraph/recon live under `scripts/`, not `skills/`). Inline red-team pass fixed one fragility
+> (worklist re-matched targets by non-unique label string → threaded node ids through instead).
+> Deviations from the spec letter, all deliberate: (a) tree-sitter/graspologic replaced by
+> `ast` + a deterministic **package-zone + connected-components** community proxy (two runs give the
+> same map); (b) scope is enforced as a **`--root` symlink-escape guard** — host-level `scope_guard`
+> is orthogonal to a local checkout, stated not faked; (c) FTS5 mirror deferred (not needed by the
+> three traversal CLIs). Committed together with the PR-4 body.
 
 Scoped, stdlib+tree-sitter (Python bindings we already reference via CodeQL/Semgrep skills — no native
 kernel). Candidate-generation feeding existing verification; never treated as proof.
