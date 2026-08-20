@@ -310,10 +310,10 @@ Detailed patterns with vulnerable/secure code examples, organized by category:
 - For MCP integrations: IDA Pro with ida-multi-mcp plugin, JADX with MCP server
 
 
-<a href="https://www.star-history.com/?repos=hypnguyen1209/offensive-claude&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=hypnguyen1209/offensive-claude&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=hypnguyen1209/offensive-claude&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=hypnguyen1209/offensive-claude&type=date&legend=top-left" />
+<a href="https://star-history.dera.page/#hypnguyen1209/offensive-claude&type=date&legend=top-left">
+  <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=hypnguyen1209/offensive-claude&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=hypnguyen1209/offensive-claude&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=hypnguyen1209/offensive-claude&type=date&legend=top-left" />
  </picture>
 </a>
