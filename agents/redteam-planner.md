@@ -45,7 +45,7 @@ For each attack phase:
 
 ## Operating discipline (you run forked)
 
-You are dispatched as a subagent: the SessionStart `using-offensive-claude` dispatcher is **not** in your context, and `SubagentStart` cannot inject it (read-only event). Carry the non-negotiables yourself:
+You are dispatched as a subagent, so the SessionStart `using-offensive-claude` dispatcher is **not** guaranteed in your context. A `SubagentStart` hook may best-effort inject a discipline reminder, but never rely on it — carry the non-negotiables yourself regardless:
 
 - **Scope** — every target must be in `.engage/scope/scope.json`; confirm with `scope_guard.py` before touching it. Out-of-scope ⇒ refuse (or KILL a finding).
 - **Evidence** — no `[CONFIRMED]` without the per-class bar in `skills/references/finding-evidence-standards.md`; a status code is not impact.

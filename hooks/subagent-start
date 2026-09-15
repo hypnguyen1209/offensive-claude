@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# SubagentStart hook for the offensive-claude plugin.
+#
+# Best-effort injection of the forked-subagent discipline into every dispatched subagent.
+# Subagents do NOT receive the SessionStart `using-offensive-claude` dispatcher, so each agent
+# definition already carries an inline "Operating discipline (you run forked)" block. This hook
+# ADDS the same non-negotiables at runtime as defense-in-depth.
+#
+# DEGRADATION MODE: FAIL-OPEN, and NON-LOAD-BEARING.
+#   The inline per-agent discipline blocks remain the authoritative guarantee. This hook is a
+#   redundant reminder: if the platform does not act on SubagentStart `additionalContext`, or the
+#   emit fails, the subagent still carries the non-negotiables from its own definition. So this
+#   script never blocks a subagent and always exits 0 — the OPPOSITE of the runtime safety guards
+#   (scope_guard.py / action_guard.py), which are FAIL-CLOSED. See hooks/README.md.
+
+set -euo pipefail
+
+# The non-negotiables a forked subagent must honor without the top-level dispatcher.
+reminder="[offensive-claude] You are a dispatched subagent (the using-offensive-claude dispatcher is not guaranteed in your context). Carry the non-negotiables yourself: SCOPE — every target must be in .engage/scope/scope.json, confirm with scope_guard.py before touching it; out-of-scope => refuse or KILL. EVIDENCE — no [CONFIRMED] without the per-class bar (a status code is not impact; SSRF needs an internal response, IDOR another principal's data, RCE command output, XSS script execution); ground every claim, never name-guess. OPSEC & SECRETS — state detection/OPSEC cost before any outward action; secrets never hit logs (redact at the boundary — rule/location only, never the value). Authorized-engagement tooling only (TERMS.md)."
+
+# Escape for JSON embedding (single C-level pass per substitution).
+escape_for_json() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
+}
+
+reminder_escaped=$(escape_for_json "$reminder")
+
+# Emit only the field the current platform consumes (printf avoids bash 5.3+ heredoc hang).
+if [ -n "${CURSOR_PLUGIN_ROOT:-}" ]; then
+  printf '{\n  "additional_context": "%s"\n}\n' "$reminder_escaped"
+elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -z "${COPILOT_CLI:-}" ]; then
+  printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "SubagentStart",\n    "additionalContext": "%s"\n  }\n}\n' "$reminder_escaped"
+else
+  printf '{\n  "additionalContext": "%s"\n}\n' "$reminder_escaped"
+fi
+
+exit 0

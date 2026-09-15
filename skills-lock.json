@@ -126,7 +126,7 @@
     },
     "using-offensive-claude": {
       "path": "skills/using-offensive-claude",
-      "sha256": "06d71f0664a5bc2e0d1690f3907cb41bfa32259701847f633e2be40e5dbcb14e"
+      "sha256": "36940b344e2c23bb8c09889ce6f496b4b959b5095e9916740b9a8011a758bf4e"
     },
     "vulnerability-analysis": {
       "path": "skills/vulnerability-analysis",
