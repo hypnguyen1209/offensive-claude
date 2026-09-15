@@ -54,6 +54,8 @@ jobs:
         run: python scripts/ci/verify_skills_lock.py
       - name: Shell-injection ban (os.system/os.popen/shell=True)
         run: python scripts/ci/check_subprocess_discipline.py
+      - name: Plugin manifest + hook-wiring consistency
+        run: python scripts/ci/check_plugin_manifest.py
       - name: Scored-judge frozen-baseline self-test
         run: python scripts/ci/agent_eval_selftest.py --selftest
 

@@ -2,6 +2,9 @@
 name: finding-checker
 description: Blind adversarial checker — given ONLY a finding artifact and its evidence (never the author's reasoning), tries to refute it and emits a structured rebuttal that drives the bounded generator↔checker rebuttal loop. Distinct from finding-validator.
 model: opus
+# Blindness is a hard guarantee: run without user/project/local CLAUDE.md so no engagement
+# context can leak the author's framing into a checker that must see only the artifact + evidence.
+omitClaudeMd: true
 layer: analysis
 phases: [exploit, actions, report]
 attck_tactics: []

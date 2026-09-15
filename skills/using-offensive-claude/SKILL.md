@@ -80,6 +80,26 @@ digraph flow {
 | A specific technique (recon, web, AD, exploit, cloud, mobile, …) | the matching domain skill |
 | Authoring a new skill for this repo | `writing-offensive-skills` |
 
+## Output contract (non-negotiable)
+
+These bars hold on every finding, standalone or in an engagement — they do **not** depend on you
+having invoked `finding-discipline` first (invoke it for the full method). When installed as a
+plugin, the repo `CLAUDE.md` is not in your context; this section carries the contract regardless.
+
+- **Confidence tier on every finding:** `[CONFIRMED]` (impact demonstrated + evidence-grounded),
+  `[POSSIBLE]` (reachable, class bar not yet met), or `[INFO]` (no impact at current severity).
+  Never present a `[POSSIBLE]` as confirmed.
+- **Evidence bar by class — a status code is not impact.** SSRF needs an internal response; IDOR
+  needs another principal's data; RCE needs command output; XSS needs script execution. See
+  `skills/references/finding-evidence-standards.md`.
+- **Ground every claim; never name-guess.** If a function/helper is called, read it — a name is not
+  behavior. Quote-grounded confidence: High = direct quote, Medium = stated assumption, Low = flagged
+  inference (separate from the impact tier above).
+- **Exploit-class findings carry tri-state `feasibility`** (`true`/`false`/`null`); a tool/solver
+  limit is `null` (manual), never `false`. Record `demonstrated` vs `inherent` severity.
+- **Authorized engagements only** (`TERMS.md`): scope-gated, OPSEC cost stated before outward action,
+  secrets never in logs (redact at the boundary — rule/location only, never the value).
+
 ## Red Flags — STOP, you're rationalizing
 
 | Thought | Reality |
