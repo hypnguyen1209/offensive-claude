@@ -72,6 +72,9 @@ scripts:
 | WPA2 handshake/PMKID crack | T1110 | CWE-326 | references/wireless-attacks.md | scripts/wifi_attack.sh |
 | WPA3-Transition downgrade (Dragonblood) | T1557 | CWE-757 | references/wireless-attacks.md | scripts/wifi_attack.sh |
 | Evil-twin WPA-Enterprise (802.1X) cred capture | T1556 | CWE-295 | references/wireless-attacks.md | scripts/wifi_attack.sh |
+| KRACK key-reinstallation (CVE-2017-13077..88) | T1557 | CWE-323 | references/wireless-attacks.md | - |
+| FragAttacks (CVE-2020-24586/87/88) | T1040 | CWE-345 | references/wireless-attacks.md | - |
+| WPS pixie-dust / online PIN brute | T1110 | CWE-330 | references/wireless-attacks.md | - |
 
 ## Quick Start
 
@@ -125,4 +128,4 @@ sudo bash scripts/wifi_attack.sh wpa3dg wlan0 wlan1mon "CorpWiFi" 6
 - **references/pivoting-tunneling.md** — Ligolo-ng (TUN/gVisor, autoroute, v0.8 multiplayer, double-pivot, ligolo-mp), Chisel HTTP-SOCKS, SSH `-D`/`-J`, DNS tunneling (iodine/dnscat2), proxychains chaining, tool-selection matrix.
 - **references/mitm-interception.md** — bettercap inline MitM, sslstrip (HSTS limits), DNS spoof, RDP MitM (PyRDP/Seth, NLA), STARTTLS stripping, SSH TOFU MitM, cookie/session theft.
 - **references/protocol-rce.md** — CVE-2024-38077 MadLicense (RDL), CVE-2025-47981 NEGOEX (wormable), CVE-2025-21307 RMCAST, CVE-2025-24035/45 RDS, MS17-010 EternalBlue, MSSQL xp_cmdshell/link crawl, WinRM, LDAP passback.
-- **references/wireless-attacks.md** — WPA2 handshake/PMKID crack, WPA3-Transition downgrade (Dragonblood; DragonShift/eaphammer, 2024-2025 reproductions), evil-twin WPA-Enterprise MSCHAPv2 capture, hashcat workflows.
+- **references/wireless-attacks.md** — WPA2 handshake/PMKID crack, WPA3-Transition downgrade (Dragonblood; DragonShift/eaphammer, 2024-2025 reproductions), evil-twin WPA-Enterprise MSCHAPv2 capture, KRACK key-reinstallation, FragAttacks, WPS pixie-dust/online PIN brute, hashcat workflows. For non-Wi-Fi radio (Bluetooth/BLE, Zigbee, Z-Wave, LoRaWAN/Sub-GHz) see the `wireless-rf` skill.

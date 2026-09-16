@@ -1,6 +1,6 @@
 # Offensive Security Research Config for Claude Code
 
-A spec-driven offensive security framework for Claude Code — structured engagement workflows based on the Cyber Kill Chain, 31 kill-chain skills (multi-file progressive-disclosure) plus a **discipline layer** (a SessionStart dispatcher + 6 process/discipline skills), 8 collaborative agents, and a shared 47-file vulnerability reference library. Inspired by [GitHub's spec-kit](https://github.com/github/spec-kit), [obra/superpowers](https://github.com/obra/superpowers), and [gadievron/raptor](https://github.com/gadievron/raptor) (crash→exploitability + OSS-repo forensics).
+A spec-driven offensive security framework for Claude Code — structured engagement workflows based on the Cyber Kill Chain, 32 kill-chain skills (multi-file progressive-disclosure) plus a **discipline layer** (a SessionStart dispatcher + 6 process/discipline skills), 8 collaborative agents, and a shared 47-file vulnerability reference library. Inspired by [GitHub's spec-kit](https://github.com/github/spec-kit), [obra/superpowers](https://github.com/obra/superpowers), and [gadievron/raptor](https://github.com/gadievron/raptor) (crash→exploitability + OSS-repo forensics).
 
 ## Quick Setup
 
@@ -107,7 +107,7 @@ Each phase transition validates:
 
 ```
 .
-├── skills/                        # 31 skill modules (progressive-disclosure layout)
+├── skills/                        # 32 skill modules (progressive-disclosure layout)
 │   ├── recon-osint/
 │   │   ├── SKILL.md               #   thin router: when-to-activate + technique map + OPSEC/detection
 │   │   ├── references/            #   per-skill technique deep-dives (theory + code + detection + OPSEC)
@@ -207,7 +207,7 @@ discipline skills come **before** domain skills (the offensive analog of brainst
 Each discipline skill carries an Iron Law + Red-Flags + Rationalizations table (resists shortcutting
 under pressure). The dispatcher auto-loads; domain skills below are invoked via the `Skill` tool.
 
-## Skills (31 domain)
+## Skills (32 domain)
 
 Each skill is a progressive-disclosure module: a thin `SKILL.md` router (when-to-activate, a technique
 map of *technique → ATT&CK ID → CWE → reference → script*, and an OPSEC/detection summary), backed by
@@ -248,6 +248,7 @@ Descriptions use `Use when…` triggers so the dispatcher routes to the right sk
 | 29 | browser-exploitation | Weaponize, Exploit | V8/JSC JIT type confusion, heap-sandbox & renderer→browser escape, Electron/IPC RCE |
 | 30 | macos-offensive | Exploit, Install | TCC/Gatekeeper bypass, keychain, LaunchAgent persistence, ESF evasion *(planned)* |
 | 31 | engagement-memory | Recon, Weaponize, Report | Cross-engagement pattern learning — ranked recall of prior techniques *(support)* |
+| 32 | wireless-rf | Recon, Exploit, Actions | Non-Wi-Fi radio: Bluetooth/BLE (GATT, crackle, KNOB/BIAS), Zigbee/Thread/Matter & Z-Wave mesh, LoRaWAN/Sub-GHz capture-replay |
 
 ## Agents (8)
 

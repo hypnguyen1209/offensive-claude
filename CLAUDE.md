@@ -61,6 +61,7 @@ Skills are loaded from `./skills/` directory:
 | 29 | browser-exploitation | Browser & Client-Side Exploitation (V8, Electron) |
 | 30 | macos-offensive | macOS Offensive — TCC/Gatekeeper/Keychain *(planned)* |
 | 31 | engagement-memory | Cross-Engagement Pattern Learning *(support)* |
+| 32 | wireless-rf | Non-Wi-Fi Radio — Bluetooth/BLE, Zigbee/Z-Wave, LoRaWAN/Sub-GHz |
 
 > **Skill architecture:** skills use a progressive-disclosure layout — a thin `SKILL.md` router
 > plus per-skill `references/` (technique deep-dives) and `scripts/` (runnable tooling). Each technique
@@ -178,6 +179,7 @@ Skills are loaded from `./skills/` directory:
 | 29 | browser-exploitation | Browser & Client-Side Exploitation | 2,4 (Weaponize, Exploit) |
 | 30 | macos-offensive | macOS Offensive (TCC/Gatekeeper/Keychain) *(planned)* | 4,5 (Exploit, Install) |
 | 31 | engagement-memory | Cross-Engagement Pattern Learning *(support)* | 1,2,8 (Recon, Weaponize, Report) |
+| 32 | wireless-rf | Non-Wi-Fi Radio — Bluetooth/BLE, Zigbee/Thread/Matter, Z-Wave, LoRaWAN/Sub-GHz | 1,4,7 (Recon, Exploit, Actions) |
 
 ## Agents Available
 
