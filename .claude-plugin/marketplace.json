@@ -8,8 +8,8 @@
   "plugins": [
     {
       "name": "offensive-claude",
-      "description": "Spec-driven offensive-security framework: 31 kill-chain skills, executable safety controls, pattern-learning memory, bounded engagement engine, and a SessionStart skill-invocation dispatcher.",
-      "version": "1.10.0",
+      "description": "Spec-driven offensive-security framework: 32 kill-chain skills, executable safety controls, pattern-learning memory, bounded engagement engine, and a SessionStart skill-invocation dispatcher.",
+      "version": "1.11.0",
       "source": "./",
       "author": {
         "name": "hypnguyen1209",

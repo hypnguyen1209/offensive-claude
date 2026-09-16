@@ -82,7 +82,7 @@
     },
     "network-attack": {
       "path": "skills/network-attack",
-      "sha256": "8a3eda4099a5e6186ac14745d9d8055e385f817ba08c819ea251f5f9f1ba7aa2"
+      "sha256": "2439a0725db99e711a89e449fa393f9185c35cb1ad666dabfbc947625713dcab"
     },
     "opsec-discipline": {
       "path": "skills/opsec-discipline",
@@ -126,7 +126,7 @@
     },
     "using-offensive-claude": {
       "path": "skills/using-offensive-claude",
-      "sha256": "36940b344e2c23bb8c09889ce6f496b4b959b5095e9916740b9a8011a758bf4e"
+      "sha256": "add6b00f3c179a15b54e456a740a17a62803448467721157fac005b9b646238c"
     },
     "vulnerability-analysis": {
       "path": "skills/vulnerability-analysis",
@@ -134,7 +134,7 @@
     },
     "web-pentest": {
       "path": "skills/web-pentest",
-      "sha256": "d17b347f57bfcabcfa6d33ed8e6cee55d97c8c152ee810c69241cd7c825fa6a3"
+      "sha256": "b04b8d5e2bcde985f007889927b27922dcdf02f428b501b4de7e44158ff56c5d"
     },
     "windows-boundaries": {
       "path": "skills/windows-boundaries",
@@ -143,6 +143,10 @@
     "windows-mitigations": {
       "path": "skills/windows-mitigations",
       "sha256": "00a85de9258ba34b0e36e1223bd563613d5110b333d4af9bce226b8ccb91dda7"
+    },
+    "wireless-rf": {
+      "path": "skills/wireless-rf",
+      "sha256": "5c9c980b342bfd122747e4e703e1e3ef4af8a1b3b87b676f19bb196c8790d0e7"
     },
     "writing-offensive-skills": {
       "path": "skills/writing-offensive-skills",

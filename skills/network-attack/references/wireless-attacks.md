@@ -111,6 +111,40 @@ hashcat -m 5500  netntlm.txt      wl.txt                            # MSCHAPv2/N
 
 ---
 
+## 5. KRACK & FragAttacks — WPA2/Wi-Fi protocol & implementation flaws
+
+### KRACK — Key Reinstallation (2017, CVE-2017-13077..13088)
+Replay message 3 of the 4-way handshake (also group-key & FT/802.11r handshakes) to force the client to
+**reinstall an in-use key**, resetting nonce/replay counters → nonce reuse → decrypt / replay / (in some
+ciphers) forge frames. It is a **client-side** flaw (patch the STA, not the AP). Largely patched on modern
+clients but still live on old embedded/IoT/Android supplicants. CWE-323 (nonce reuse).
+```bash
+# Vanhoef's krackattacks-scripts (test tool) sets up a rogue channel-based MitM and replays msg3.
+#   git clone https://github.com/vanhoefm/krackattacks-scripts ; ./krack-test-client.py
+```
+
+### FragAttacks (2021, design CVE-2020-24586/24587/24588 + impl CVE-2020-26139..26147)
+Aggregation & fragmentation flaws in the 802.11 standard **plus** widespread implementation bugs
+(accepting plaintext/EAPOL frames pre-auth, reassembling fragments under mixed keys, fragment-cache
+poisoning). Affects nearly all devices **regardless of WPA2/WPA3** and can enable plaintext injection /
+limited exfil in some configs. Impact is highly device-specific — mark per-device **UNVERIFIED** until you
+test it. CWE-345 (insufficient integrity verification).
+```bash
+#   git clone https://github.com/vanhoefm/fragattacks ; ./fragattack.py wlan0 --test <case>
+```
+
+## 6. WPS — pixie-dust & online PIN brute
+
+The WPS **8-digit PIN** is validated in two halves and the last digit is a checksum → only ~11,000
+candidates. Two paths to recover it (and thus the WPA2 PSK **regardless of passphrase strength**):
+- **Online brute:** `reaver -i wlan0mon -b <BSSID> -vv` (modern APs rate-limit / lock WPS — slow/noisy).
+- **Pixie-dust (offline, Bongard 2014):** many chipsets (Ralink/Broadcom/Realtek) generate the E-S1/E-S2
+  registrar nonces with weak entropy, so the PIN is recoverable **offline in seconds**:
+  `reaver -i wlan0mon -b <BSSID> -K 1 -vv`  or  `bully <iface> -b <BSSID> -d` (pixiewps).
+CWE-330 (insufficiently random values) / CWE-307 (no brute-force protection). **Mitigation: disable WPS.**
+OPSEC: association/EAPOL attempts are logged by the AP; repeated tries trigger WPS lockout — fingerprint
+the chipset first and prefer the single-shot pixie-dust attempt over a long online brute.
+
 ## Detection summary (this cluster)
 | Technique | IOC | Detection |
 |---|---|---|

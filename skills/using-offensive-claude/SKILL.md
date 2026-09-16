@@ -65,7 +65,7 @@ digraph flow {
    `engagement-flow` (run the kill chain), `scope-discipline` (authorization boundary),
    `threat-model-discipline` (model the surface + detect drift), `finding-discipline` (proof before
    any `[CONFIRMED]`), `opsec-discipline` (detection-aware).
-2. **Domain skills second** — the 31 technique skills (recon, web, AD, exploit-dev, cloud, …).
+2. **Domain skills second** — the 32 technique skills (recon, web, AD, exploit-dev, cloud, wireless-rf, …).
 
 "Run a full pentest" → engagement-flow first. "Is this finding real?" → finding-discipline first.
 
