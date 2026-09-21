@@ -91,7 +91,7 @@ def make_pattern(target: str, vuln_class: str, *, cwe: str = "", attack_id: str 
                  tech_stack=None, evidence_ref: str = "", source: str = "",
                  status: str = "active", confidence: float = 1.0,
                  last_verified: Optional[float] = None, ttl_days: int = 0,
-                 ts: Optional[float] = None) -> dict:
+                 context: str = "", ts: Optional[float] = None) -> dict:
     t = _now(ts)
     rec = {
         "schema_version": CURRENT_SCHEMA_VERSION,
@@ -103,6 +103,7 @@ def make_pattern(target: str, vuln_class: str, *, cwe: str = "", attack_id: str 
         "cwe": str(cwe or "").upper().replace("CWE_", "CWE-") if cwe else "",
         "attack_id": str(attack_id or "").upper(),
         "technique": " ".join((technique or "").split()),     # collapse internal whitespace (matches key)
+        "context": " ".join((context or "").split()),          # contextual-BM25 situating line (optional)
         "severity": (severity or "medium").strip().lower(),
         "cvss": float(cvss) if cvss is not None else None,
         "evidence_ref": str(evidence_ref or ""),
@@ -156,7 +157,7 @@ def validate_pattern(rec: dict) -> None:
     ttl = rec.get("ttl_days")
     if ttl is not None and (isinstance(ttl, bool) or not isinstance(ttl, int) or ttl < 0):
         raise SchemaError("ttl_days must be a non-negative int")
-    for fld in ("evidence_ref", "source", "technique"):     # technique is free text -> can carry loot
+    for fld in ("evidence_ref", "source", "technique", "context"):   # free text -> can carry loot
         if looks_like_secret(str(rec.get(fld) or "")):
             raise SchemaError(f"{fld} looks like an inline secret — store a reference/path, "
                               "not the secret itself (rotate the exposed credential)")

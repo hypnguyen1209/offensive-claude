@@ -221,3 +221,30 @@ def test_cli_scope_violation_exit_3(tmp_path, capsys):
 
 def test_cli_get_missing_db_errors(tmp_path):
     assert fs.main(["--db", str(tmp_path / "nope.db"), "get", "--ids", "a"]) == 2
+
+
+# --------------------------------------------------------- contextual-BM25 (cookbook adoption)
+def test_context_is_folded_into_body_and_searchable(tmp_path):
+    conn = _store(tmp_path)
+    # body has NO 'kubelet' token; only the situating context does. Contextual-BM25 must let a search
+    # for 'kubelet' still find this finding.
+    fs.add_finding(conn, _f("SSRF in metadata proxy", "reached the internal endpoint",
+                            cwe="CWE-918"), ts=1.0)  # control: unrelated finding
+    fid = fs.add_finding(conn, {"title": "SSRF egress", "body": "fetch() hits an internal IP",
+                                "cwe": "CWE-918", "severity": "high", "phase": "exploit",
+                                "status": "confirmed",
+                                "context": "reachable from the unauth kubelet read-only port 10255"},
+                         ts=2.0)
+    hits = fs.search(conn, "kubelet")
+    rows = fs.get(conn, [fid])
+    conn.close()
+    assert any(h["fid"] == fid for h in hits)          # found via the context token
+    assert "Context:" in rows[0]["body"] and "kubelet" in rows[0]["body"]
+
+
+def test_context_absent_is_unchanged(tmp_path):
+    conn = _store(tmp_path)
+    fid = fs.add_finding(conn, _f("plain finding", "just a body"), ts=1.0)
+    rows = fs.get(conn, [fid])
+    conn.close()
+    assert rows[0]["body"] == "just a body"             # no Context: prefix when none supplied

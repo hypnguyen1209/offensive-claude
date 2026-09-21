@@ -1,0 +1,76 @@
+{
+  "_readme": "Labeled held-out eval corpus for the DETERMINISTIC validator (validate_findings.evaluate_finding). Each record is a finding plus expected_tier (the hand-verified ground truth). Grounded fixtures cite evidence/proof.txt; ungrounded ones cite a missing file or []. Run offline via scripts/ci/eval_corpus.py. Adding cases is encouraged (the cookbook 'higher volume' rule).",
+  "findings": [
+    {"id": "SSRF-CONF", "title": "SSRF in webhook fetch", "cwe": "CWE-918", "severity": "high",
+     "evidence": ["proof.txt"], "proof": {"internal_response_read": true}, "expected_tier": "CONFIRMED"},
+    {"id": "SSRF-STATUS", "title": "SSRF suspected (200 from internal host)", "cwe": "CWE-918", "severity": "high",
+     "evidence": ["proof.txt"], "proof": {}, "expected_tier": "POSSIBLE"},
+
+    {"id": "XSS-EXEC", "title": "Reflected XSS executes in victim context", "cwe": "CWE-79", "severity": "high",
+     "evidence": ["proof.txt"], "proof": {"script_executed": true}, "expected_tier": "CONFIRMED"},
+    {"id": "XSS-ENCODED", "title": "XSS but output encoded", "cwe": "CWE-79", "severity": "high",
+     "evidence": ["proof.txt"], "proof": {"encoded_inert": true}, "expected_tier": "REJECTED"},
+    {"id": "XSS-REFLECTED", "title": "XSS reflection not yet confirmed", "cwe": "CWE-79", "severity": "medium",
+     "evidence": ["proof.txt"], "proof": {}, "expected_tier": "POSSIBLE"},
+
+    {"id": "IDOR-CROSS", "title": "IDOR returns another principal's record", "cwe": "CWE-639", "severity": "high",
+     "evidence": ["proof.txt"], "proof": {"cross_identity_confirmed": true}, "expected_tier": "CONFIRMED"},
+    {"id": "IDOR-SELF", "title": "IDOR on own object only", "cwe": "CWE-639", "severity": "medium",
+     "evidence": ["proof.txt"], "proof": {"self_idor": true}, "expected_tier": "REJECTED"},
+    {"id": "IDOR-UNCONF", "title": "Possible BOLA on /api/users/{id}", "cwe": "CWE-639", "severity": "high",
+     "evidence": ["proof.txt"], "proof": {}, "expected_tier": "POSSIBLE"},
+    {"id": "IDOR-BYTITLE", "title": "IDOR via predictable order id", "severity": "high",
+     "evidence": ["proof.txt"], "proof": {"cross_identity_confirmed": true}, "expected_tier": "CONFIRMED"},
+
+    {"id": "RCE-OUT", "title": "OS command injection with captured output", "cwe": "CWE-78", "severity": "critical",
+     "evidence": ["proof.txt"], "proof": {"command_output_captured": true}, "expected_tier": "CONFIRMED"},
+    {"id": "RCE-BLIND", "title": "Blind command injection (no oob yet)", "cwe": "CWE-78", "severity": "high",
+     "evidence": ["proof.txt"], "proof": {}, "expected_tier": "POSSIBLE"},
+    {"id": "RCE-BYTITLE", "title": "remote code execution via eval sink", "severity": "critical",
+     "evidence": ["proof.txt"], "proof": {"command_output_captured": true}, "expected_tier": "CONFIRMED"},
+    {"id": "DESER-CONF", "title": "Insecure deserialization to RCE", "cwe": "CWE-502", "severity": "critical",
+     "evidence": ["proof.txt"], "proof": {"command_output_captured": true}, "expected_tier": "CONFIRMED"},
+    {"id": "DESER-UNCONF", "title": "Deserialization sink reachable", "cwe": "CWE-502", "severity": "high",
+     "evidence": ["proof.txt"], "proof": {}, "expected_tier": "POSSIBLE"},
+
+    {"id": "OR-EXT", "title": "Open redirect to attacker host", "cwe": "CWE-601", "severity": "medium",
+     "evidence": ["proof.txt"], "proof": {"external_redirect": true}, "expected_tier": "CONFIRMED"},
+    {"id": "OR-SAME", "title": "Open redirect but same-origin only", "cwe": "CWE-601", "severity": "low",
+     "evidence": ["proof.txt"], "proof": {"same_origin": true}, "expected_tier": "REJECTED"},
+
+    {"id": "CORS-CONF", "title": "CORS creds reflected cross-origin", "cwe": "CWE-942", "severity": "high",
+     "evidence": ["proof.txt"], "proof": {"creds_reflected_origin": true}, "expected_tier": "CONFIRMED"},
+    {"id": "CORS-UNCONF", "title": "Permissive CORS ACAO", "cwe": "CWE-942", "severity": "medium",
+     "evidence": ["proof.txt"], "proof": {}, "expected_tier": "POSSIBLE"},
+
+    {"id": "NATIVE-OOB", "title": "Heap OOB write in parser", "cwe": "CWE-787", "severity": "critical",
+     "evidence": ["proof.txt"], "proof": {}, "expected_tier": "POSSIBLE"},
+    {"id": "NATIVE-UAF", "title": "Use-after-free in session handler", "cwe": "CWE-416", "severity": "critical",
+     "evidence": ["proof.txt"], "proof": {}, "expected_tier": "POSSIBLE"},
+
+    {"id": "UNGROUNDED-EMPTY", "title": "RCE (no evidence attached)", "cwe": "CWE-78", "severity": "critical",
+     "evidence": [], "proof": {"command_output_captured": true}, "expected_tier": "REJECTED"},
+    {"id": "UNGROUNDED-MISSING", "title": "SSRF citing a missing artifact", "cwe": "CWE-918", "severity": "high",
+     "evidence": ["does-not-exist.txt"], "proof": {"internal_response_read": true}, "expected_tier": "REJECTED"},
+
+    {"id": "PROV-CAP", "title": "RCE confirmed but reachability has an inferred hop", "cwe": "CWE-78", "severity": "critical",
+     "evidence": ["proof.txt"], "proof": {"command_output_captured": true},
+     "reachability": [{"provenance": "EXTRACTED"}, {"provenance": "INFERRED"}], "expected_tier": "POSSIBLE"},
+    {"id": "PROV-STANDS", "title": "SSRF confirmed with all-extracted path", "cwe": "CWE-918", "severity": "high",
+     "evidence": ["proof.txt"], "proof": {"internal_response_read": true},
+     "reachability": [{"provenance": "EXTRACTED"}, {"provenance": "EXTRACTED"}], "expected_tier": "CONFIRMED"},
+
+    {"id": "INFO-CLASS", "title": "XSS proven but info severity", "cwe": "CWE-79", "severity": "info",
+     "evidence": ["proof.txt"], "proof": {"script_executed": true}, "expected_tier": "INFO"},
+    {"id": "INFO-NOCLASS", "title": "Verbose error message disclosure", "cwe": "CWE-209", "severity": "informational",
+     "evidence": ["proof.txt"], "proof": {}, "expected_tier": "INFO"},
+
+    {"id": "NOCLASS-CONF", "title": "SQL injection (union-based) dumps users table", "cwe": "CWE-89", "severity": "critical",
+     "evidence": ["proof.txt"], "proof": {}, "expected_tier": "CONFIRMED"},
+    {"id": "NOCLASS-CONF2", "title": "Auth bypass via logic flaw", "cwe": "CWE-287", "severity": "high",
+     "evidence": ["proof.txt"], "proof": {}, "expected_tier": "CONFIRMED"},
+
+    {"id": "HEDGE-LINT", "title": "Command injection that probably works", "cwe": "CWE-78", "severity": "high",
+     "evidence": ["proof.txt"], "proof": {"command_output_captured": true}, "expected_tier": "CONFIRMED", "expected_lint": true}
+  ]
+}

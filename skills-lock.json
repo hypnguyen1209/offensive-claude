@@ -50,7 +50,7 @@
     },
     "engagement-memory": {
       "path": "skills/engagement-memory",
-      "sha256": "1b3490a9316ec0398562cd276925a37af547ba47d0eb5f1a52aafdf7774c4d78"
+      "sha256": "e25c0af4c989c7ce95c6b8fb09a9a1bd77bd9a58662a4a0dc0737a7a086e5484"
     },
     "exploit-development": {
       "path": "skills/exploit-development",
