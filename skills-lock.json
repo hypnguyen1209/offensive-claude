@@ -66,7 +66,7 @@
     },
     "initial-access": {
       "path": "skills/initial-access",
-      "sha256": "f5bb181d725d0d495681d03958b2cbfa2d670f2018d68682e871b88c1de55341"
+      "sha256": "7fd79dcc4fcb0e3464aed0c6d1725b98c019521c485bded5d99dc69559cc5c19"
     },
     "keylogger-arch": {
       "path": "skills/keylogger-arch",
