@@ -13,6 +13,8 @@ depends_on: [recon-osint, exploit-development, edr-evasion]
 feeds_into: [red-team-ops]
 inputs: [target_profile, payload, evasion_technique]
 outputs: [initial_foothold, delivery_report]
+references:
+  - references/social-engineering.md
 ---
 
 # Initial Access
@@ -322,6 +324,15 @@ $b=$a.GetFields('NonPublic,Static')|?{$_.Name -like "*Context"}
 # Or: copy file through pipe: type file.exe > clean.exe
 # Or: deliver inside container (ISO/VHD/7z) that strips MOTW
 ```
+
+## Social Engineering (human layer)
+
+Phishing above is the *technical* SE; the human-layer tradecraft — **pretexting**, **vishing / callback
+phishing (TOAD)**, **smishing**, and **help-desk / MFA social attacks** (reset abuse, push-bombing) — is
+in **references/social-engineering.md**. It carries ATT&CK (T1598 / T1566 / T1556 / T1621), detection
+signals, and — because it targets people who never signed your ROE — a hard **authorization + legal +
+no-harm** gate you must clear before any pretext contact. Physical vectors (tailgating, badge, USB drop)
+are below.
 
 ## Advanced: Physical Access Vectors
 
