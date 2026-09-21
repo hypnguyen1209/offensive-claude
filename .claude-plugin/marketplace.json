@@ -9,7 +9,7 @@
     {
       "name": "offensive-claude",
       "description": "Spec-driven offensive-security framework: 32 kill-chain skills, executable safety controls, pattern-learning memory, bounded engagement engine, and a SessionStart skill-invocation dispatcher.",
-      "version": "1.11.0",
+      "version": "1.12.0",
       "source": "./",
       "author": {
         "name": "hypnguyen1209",

@@ -58,8 +58,11 @@ def expand_query(terms) -> list:
 
 
 def doc_tokens(rec: dict) -> list:
+    # Contextual-BM25 (claude-cookbooks contextual retrieval, offline half): fold the record's optional
+    # `context` situating line into the indexed token stream so recall improves for terse patterns.
+    # Complements ALIASES query expansion. Back-compat: records without `context` behave as before.
     return tokenize(" ".join([rec.get("technique", ""), rec.get("vuln_class", ""), rec.get("attack_id", ""),
-                              rec.get("cwe", ""), " ".join(rec.get("tech_stack", []))]))
+                              rec.get("cwe", ""), " ".join(rec.get("tech_stack", [])), rec.get("context", "")]))
 
 
 def _build_idf(docs: list) -> dict:

@@ -130,3 +130,27 @@ def test_calibration_cases_are_well_formed():
     # planted PASS cases cite EVD; planted KILL cases do not
     assert all(any("EVD-" in e for e in c["evidence"]) for c in cc["plant_pass"])
     assert all(c["evidence"] == [] for c in cc["plant_kill"])
+
+
+# --------------------------------------------------------- grader attribution (cookbook: hold grader fixed)
+def _base_verdict(**extra):
+    v = {"decision": "PASS", "confidence": 0.95, "rubric_version": jp.RUBRIC_VERSION,
+         "evidence": ["[EVD-001] proof"]}
+    v.update(extra)
+    return v
+
+
+def test_grader_model_optional_absent_ok():
+    # attribution is optional: a verdict without grader_model is still conformant
+    assert jp.validate_verdict_record(_base_verdict()) == []
+
+
+def test_grader_model_present_valid_ok():
+    assert jp.validate_verdict_record(_base_verdict(grader_model="claude-opus-4-6")) == []
+
+
+def test_grader_model_empty_or_nonstring_rejected():
+    # present-but-empty looks attributed but isn't -> fail-closed
+    assert jp.validate_verdict_record(_base_verdict(grader_model="   "))
+    assert jp.validate_verdict_record(_base_verdict(grader_model=""))
+    assert jp.validate_verdict_record(_base_verdict(grader_model=123))

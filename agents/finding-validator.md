@@ -64,6 +64,10 @@ Every verdict follows the shared protocol in `engine/judge_protocol.py`:
   citation is not a PASS — treat it as KILL[Q2].
 - **Versioned + reproducible.** Judge under the pinned decoding (temperature 0) and stamp each
   verdict with `rubric_version` (currently `1.0.0`) so stale verdicts fall out of cache on a bump.
+- **Attributable grader (hold the grader fixed).** Stamp each verdict with `grader_model` — the model
+  that issued it — so scores stay comparable across models and feed the correct `model_scorecard`
+  cell. Grading a finding with the same model that produced it makes the verdict incomparable; keep the
+  grader fixed across a batch. (`judge_protocol` validates `grader_model` is a non-empty string if present.)
 
 ## Rules
 

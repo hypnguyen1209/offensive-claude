@@ -54,6 +54,11 @@ JUDGE_DECODING = {"temperature": 0.0, "top_p": 1.0}
 
 # Machine-checkable protocol invariants a verdict record must satisfy (see validate_verdict_record).
 REQUIRED_VERDICT_FIELDS = ("decision", "confidence", "rubric_version", "evidence")
+# Optional attribution fields (recognized, validated-if-present, not required). `grader_model` records
+# WHICH model issued the verdict so scores stay comparable across models (the cookbook agentic-search
+# "hold the grader fixed" discipline) and feed the right model_scorecard cell. Kept optional so the
+# stable verdict protocol is not broken for existing producers; model_scorecard already keys cells by model.
+ATTRIBUTION_FIELDS = ("grader_model",)
 ACCEPT_DECISIONS = {"PASS", "ACCEPTED", "CONFIRMED"}
 
 
@@ -124,6 +129,11 @@ def validate_verdict_record(record) -> list:
     for f in REQUIRED_VERDICT_FIELDS:
         if f not in record:
             problems.append(f"missing required field: {f}")
+    # Attribution fields are optional, but if present must be meaningful (a blank grader_model is worse
+    # than none — it looks attributed but isn't). Fail-closed on an empty/non-string value.
+    for f in ATTRIBUTION_FIELDS:
+        if f in record and (not isinstance(record[f], str) or not record[f].strip()):
+            problems.append(f"attribution field {f!r} present but empty/non-string")
     if "confidence" in record and normalize_confidence(record["confidence"]) == AMBIGUOUS \
             and str(record.get("confidence", "")).strip().upper() != AMBIGUOUS:
         problems.append(f"confidence {record['confidence']!r} is not a valid bucket (must be one of "

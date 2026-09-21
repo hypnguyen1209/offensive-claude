@@ -1,0 +1,4 @@
+Shared non-empty evidence artifact for the eval corpus. `validate_findings._grounded` requires each
+cited evidence entry to resolve to a real, non-empty file inside the evidence dir; the corpus fixtures
+cite this file so grounding passes and the class-proof/tier logic is what actually gets measured.
+(The ungrounded fixtures deliberately cite a missing file or an empty list to exercise REJECTED.)

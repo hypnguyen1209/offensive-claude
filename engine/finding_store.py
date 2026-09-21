@@ -191,6 +191,14 @@ def add_finding(conn: sqlite3.Connection, finding: dict, *, ts: Optional[float] 
         raise StoreError("finding must be an object")
     title = _sanitize(str(finding.get("title", "")))
     body = _sanitize(str(finding.get("body", "")))
+    # Contextual-BM25 (anthropics/claude-cookbooks contextual retrieval, the offline BM25 half): a short
+    # situating line supplied at record time (target role, what made it reachable, what it chained from/
+    # to) is prepended to the body so it flows into the FTS mirror via the triggers - search() then also
+    # matches on this context, improving recall for terse findings. Sanitized like all stored text; the
+    # marker keeps it distinguishable from the operator's original body. Back-compat: absent -> unchanged.
+    ctx = _sanitize(str(finding.get("context", "") or "")).strip()
+    if ctx:
+        body = f"Context: {ctx}\n\n{body}" if body else f"Context: {ctx}"
     cwe = str(finding.get("cwe", "") or "").upper()
     sev = str(finding.get("severity", "info") or "info").strip().lower()
     if sev not in SEVERITY_RANK:

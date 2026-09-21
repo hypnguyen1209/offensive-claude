@@ -484,3 +484,25 @@ def test_regression_case_insensitive_vuln_class_recall():
     rec = dict(pat()); rec["vuln_class"] = "SSRF"
     schemas.validate_pattern(rec)                        # uppercase is a valid string
     assert pdb.match([rec], vuln_class="ssrf")           # matched case-insensitively
+
+
+# --------------------------------------------------------- contextual-BM25 (cookbook adoption)
+def test_context_stored_and_tokenized():
+    rec = pat(context="reachable via the unauth kubelet read-only port 10255")
+    assert rec["context"] == "reachable via the unauth kubelet read-only port 10255"
+    toks = pdb.doc_tokens(rec)
+    assert "kubelet" in toks and "10255" in toks        # context folded into the BM25 token stream
+
+
+def test_context_absent_is_back_compat():
+    rec = pat()
+    assert rec["context"] == ""
+    # a record predating the field (no key at all) must still tokenize without KeyError
+    rec.pop("context")
+    assert isinstance(pdb.doc_tokens(rec), list)
+
+
+def test_context_secret_is_scrubbed():
+    loot = "password=" + _fixture("S3cr3t", "Value", "123456")
+    with pytest.raises(schemas.SchemaError):
+        schemas.make_pattern("acme.com", "ssrf", context=loot)
