@@ -1,7 +1,7 @@
 {
   "name": "offensive-claude",
   "description": "Spec-driven offensive-security framework for Claude Code: 32 kill-chain skills, executable safety controls (scope/finding/OPSEC discipline), pattern-learning memory, and a bounded engagement engine — with a SessionStart dispatcher that enforces skill-invocation discipline.",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "author": {
     "name": "hypnguyen1209",
     "email": "hypnguyen1209@gmail.com"
